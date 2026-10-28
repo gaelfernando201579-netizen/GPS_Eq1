@@ -1,65 +1,103 @@
-# CAMPY — GPS Eq1
+# CAMPY — Proyecto Escolar
 
-## Estructura
+**Instituto Tecnológico de Oaxaca**
 
-- `frontend/`: codigo original, sin cambios funcionales ni archivos adicionales.
-- `backend/`: API inicial Node.js + Express (separada, no conectada todavia con las pantallas del frontend).
-- `supabase/migrations/`: historial de cambios de estructura. Se encuentra vacia hasta ejecutar `supabase db pull` en el proyecto enlazado.
-- `supabase/seeds/50_productos.sql`: carga manual de 50 productos de ejemplo en una base de pruebas.
-- `supabase/seeds/seed_staging_completo.sql`: carga de prueba extendida, con requisitos adicionales.
-- `supabase/seed.sql`: vacia; no ejecuta automaticamente los 50 productos.
+**Ingeniería en Sistemas Computacionales**
 
-## Ejecutar el frontend (exactamente como en el ZIP original)
+**Materia:** Gestión de Proyectos de Software  
+**Clave:** SCG-1009  
+**Grupo:** 8SC  
+**Equipo:** 1
 
-Desde la raiz del repositorio:
+## Descripción del proyecto
 
-```powershell
-cd frontend
-npm install
-npm run dev
-```
+**Campy** es una plataforma web de compraventa dirigida a la comunidad estudiantil, cuyo propósito es facilitar la publicación, búsqueda y adquisición de productos dentro del entorno escolar.
 
-## Backend separado
+El sistema contempla funcionalidades para compradores y vendedores, incluyendo la gestión de productos, pedidos, perfiles de usuario y calificaciones.
 
-En otra terminal, desde la raiz:
+El proyecto se encuentra en desarrollo como parte de la asignatura Gestión de Proyectos de Software.
 
-```powershell
-cd backend
-npm install
-Copy-Item .env.example .env
-```
+## Tecnologías utilizadas
 
-Edita `backend/.env` con la URL del proyecto y clave publicable de Supabase.
+**Frontend**
+- React
+- Vite
+- JavaScript
+- HTML5 y CSS3
+- Tailwind CSS
 
-```powershell
-npm run dev
-```
+**Backend**
+- Node.js
+- Express.js
+- API REST
 
-La API de lectura incluye `/api/health`, `/api/productos` y `/api/categorias`, pero el frontend original sigue usando sus datos existentes y no consume estas rutas todavia.
+**Base de datos**
+- Supabase
+- PostgreSQL
 
-## Migraciones de una base de Supabase ya existente
+**Control de versiones**
+- Git
+- GitHub
 
-Desde la raiz del repositorio, con Node.js y Docker disponibles cuando se requiera:
+## Estructura del proyecto
 
-```powershell
-npm install --save-dev supabase
-npx supabase init
-npx supabase login
-npx supabase link --project-ref TU_PROJECT_REF
-npx supabase db pull
-npx supabase migration list
-```
+- **frontend/** — Interfaz web desarrollada con React y Vite.
+- **backend/** — API REST desarrollada con Node.js y Express.
+- **README.md** — Documentación general del proyecto.
 
-El `db pull` crea una migracion local inicial a partir del esquema remoto, sin sustituir ni duplicar las tablas existentes. Revisa el historial de migraciones y verifica los cambios antes de ejecutar `db push`. Si el CLI te ofrece marcar la migracion base como aplicada en remoto, revisa y confirma que corresponde al mismo esquema ya existente.
+## Funcionalidades del sistema
 
-## Semillas (solo pruebas/desarrollo)
+El proyecto contempla los siguientes módulos:
 
-La carpeta `supabase/seeds` contiene scripts SQL que **no se ejecutan por subirlos a GitHub**. Para agregar productos, usa el SQL Editor del proyecto de pruebas en Supabase y ejecuta SOLO `50_productos.sql`.
+- Inicio de sesión y registro de usuarios.
+- Visualización y búsqueda de productos.
+- Publicación y administración de productos.
+- Gestión de pedidos y entregas.
+- Administración de perfiles de usuario.
+- Calificaciones y reseñas.
+- Conexión con la base de datos alojada en Supabase.
 
-Requisitos: al menos una categoria y un producto existente asociado a un vendedor. El script no crea usuarios; genera 50 productos etiquetados como `Campy Demo - ...`, evitando duplicarlos si se ejecuta otra vez.
+**Estado del desarrollo:** En proceso. Algunas funcionalidades corresponden a módulos planificados y todavía no se encuentran implementadas o integradas.
 
-Alternativamente, `seed_staging_completo.sql` carga varias tablas ademas de los 50 productos, requiere un conjunto mayor de datos previos y no se debe ejecutar junto con `50_productos.sql`.
+## Instalación y ejecución
 
-**ADVERTENCIA:** Tu captura muestra `main (PRODUCTION)`; usa una base de desarrollo o una copia de pruebas, haz respaldo y no ejecutes `db reset --linked` en produccion. La ejecucion de SQL no debe hacerse sin revisar FKs y restricciones reales.
+Para ejecutar el frontend:
 
-NOTA: El `frontend/README.md` es el archivo original, incluidos los marcadores de conflicto de merge que ya contenia. No fue editado para preservar el codigo original exactamente.
+1. Acceder a la carpeta `frontend`.
+2. Instalar las dependencias con `npm install`.
+3. Ejecutar `npm run dev`.
+
+Para ejecutar el backend:
+
+1. Acceder a la carpeta `backend`.
+2. Instalar las dependencias con `npm install`.
+3. Configurar las variables de entorno de Supabase en un archivo `.env`.
+4. Ejecutar `npm run dev`.
+
+## Integrantes — Equipo 1
+
+| Nombre completo | Número de control |
+|---|---|
+| Alemán Cruz Carlos Yahel | 22160989 |
+| Caballero Silva Dalia Montserrat | 23160858 |
+| Crespo Castañon Suyay Fernanda | 23160875 |
+| Martínez Villalobos Dante | 23161009 |
+| Ortíz Pérez Gael Fernando | 23161060 |
+| Salinas Montesino Cintia Yadai | 21160781 |
+
+## Docente
+
+**Adelina Martínez Nieto**
+
+## Información académica
+
+**Institución:** Instituto Tecnológico de Oaxaca  
+**Carrera:** Ingeniería en Sistemas Computacionales  
+**Asignatura:** Gestión de Proyectos de Software  
+**Grupo:** 8SC  
+**Equipo:** 1  
+**Periodo:** 2026
+
+---
+
+**Campy — Proyecto académico desarrollado por el Equipo 1 del Instituto Tecnológico de Oaxaca.**
