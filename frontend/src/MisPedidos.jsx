@@ -1,7 +1,7 @@
 import React from 'react';
 import logoCampy from './assets/logo.png';
 
-const MisPedidos = ({ irAInicio, irAPerfil, pedido }) => {
+const MisPedidos = ({ irAInicio, irAPerfil, pedido, pedidosVendedor = [] }) => {
   const esListaValida = Array.isArray(pedido) && pedido.length > 0;
   
   const pedidosPorVendedor = {};
@@ -13,7 +13,7 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedido }) => {
           ubicacion: item.ubicacion,
           items: [],
           total: 0,
-          idPedido: Math.floor(Math.random() * 90000) + 10000 
+          idPedido: 48201
         };
       }
       pedidosPorVendedor[item.tienda].items.push(item);
@@ -22,6 +22,7 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedido }) => {
   }
 
   const listaDeEntregas = Object.values(pedidosPorVendedor);
+  const pedidosCanceladosConNota = pedidosVendedor.filter(p => p.estado === 'Cancelado' && p.notaCancelacion);
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center font-sans">
@@ -37,7 +38,25 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedido }) => {
         <div className="flex-1 overflow-y-auto pb-24 px-5 pt-4 hide-scrollbar">
           <h2 className="font-black text-xl mb-4 text-gray-900 tracking-wide uppercase">Mis Pedidos</h2>
 
-          {!esListaValida && (
+          {/* Avisos de pedidos cancelados con la nota del vendedor */}
+          {pedidosCanceladosConNota.map((canc) => (
+            <div key={canc.id} className="border-2 border-red-300 bg-red-50/60 rounded-3xl p-4 mb-5">
+              <div className="flex justify-between items-center mb-2">
+                <span className="bg-red-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase">
+                  ✕ Pedido Cancelado
+                </span>
+                <span className="text-gray-500 text-[10px] font-bold">Pedido #{canc.id}</span>
+              </div>
+              <p className="text-xs font-bold text-gray-800 mt-1">
+                El vendedor canceló este pedido y te dejó la siguiente nota:
+              </p>
+              <div className="bg-white border border-red-200 rounded-2xl p-3 mt-2 text-xs text-red-700 italic">
+                "{canc.notaCancelacion}"
+              </div>
+            </div>
+          ))}
+
+          {!esListaValida && pedidosCanceladosConNota.length === 0 && (
             <div className="text-center bg-gray-50 p-6 rounded-3xl border border-gray-100">
               <span className="text-4xl mb-2 block">🛒</span>
               <p className="text-gray-500 font-bold">Tu carrito está vacío</p>
@@ -57,12 +76,18 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedido }) => {
               <div className="flex flex-col gap-3 mb-4">
                 {entrega.items.map((item, idx) => (
                   <div key={idx} className="flex gap-4 items-center bg-gray-50 p-2 rounded-2xl border border-gray-100">
-                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-gray-400 text-[10px] font-bold shrink-0 border border-gray-200">IMG</div>
+                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-gray-400 text-[10px] font-bold shrink-0 border border-gray-200 overflow-hidden">
+                      {item.imagen ? (
+                        <img src={item.imagen} alt={item.nombre} className="w-full h-full object-cover" />
+                      ) : (
+                        'IMG'
+                      )}
+                    </div>
                     <div className="flex-1">
                       <h3 className="font-black text-sm text-gray-800 leading-tight">
                         <span className="text-[#FF8C00]">{item.cantidad}x</span> {item.nombre}
                       </h3>
-                      <p className="text-gray-400 text-[9px] mt-0.5">Vendedor: {entrega.tienda}</p>
+                      <p className="text-gray-400 text-[9px] mt-0.5">{entrega.tienda}</p>
                     </div>
                     <span className="text-gray-800 font-black text-sm px-2">${(item.precio * item.cantidad).toFixed(2)}</span>
                   </div>
@@ -79,22 +104,13 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedido }) => {
                 <div className="flex-1">
                   <h4 className="font-black text-xs text-gray-800">¡Ya casi llega!</h4>
                   <p className="text-gray-500 text-[10px] leading-tight mt-0.5">
-                    Tu repartidor viene desde <span className="text-[#FF8C00] font-bold">{entrega.ubicacion}</span>.
+                    Tu vendedor viene desde <span className="text-[#FF8C00] font-bold">{entrega.ubicacion}</span>.
                   </p>
                 </div>
                 <div className="bg-white border border-[#FF8C00] text-[#FF8C00] flex flex-col items-center justify-center px-2 py-1 rounded-lg shrink-0 shadow-sm">
                   <span className="text-[8px] font-black uppercase">Llega en</span>
-                  <span className="text-sm font-black">2 min</span>
+                  <span className="text-sm font-black">5 min</span>
                 </div>
-              </div>
-
-              <div className="flex justify-between items-center relative mb-6 px-2">
-                <div className="absolute top-1/2 left-4 right-4 h-1 bg-gray-200 -translate-y-1/2 z-0"></div>
-                <div className="absolute top-1/2 left-4 w-[66%] h-1 bg-[#FF8C00] -translate-y-1/2 z-0"></div>
-                <div className="flex flex-col items-center z-10 gap-1 w-12"><div className="w-5 h-5 bg-[#FF8C00] rounded-full flex items-center justify-center text-white text-[10px]">✓</div><span className="text-[7px] font-black text-gray-800 uppercase">Confirmado</span></div>
-                <div className="flex flex-col items-center z-10 gap-1 w-12"><div className="w-5 h-5 bg-[#FF8C00] rounded-full flex items-center justify-center text-white text-[10px]">✓</div><span className="text-[7px] font-black text-gray-800 uppercase">Preparado</span></div>
-                <div className="flex flex-col items-center z-10 gap-1 w-12"><div className="w-6 h-6 bg-white border-2 border-[#FF8C00] rounded-full flex items-center justify-center text-[#FF8C00] text-xs font-bold shadow-md">⚡</div><span className="text-[7px] font-black text-[#FF8C00] uppercase">En Camino</span></div>
-                <div className="flex flex-col items-center z-10 gap-1 w-12"><div className="w-5 h-5 bg-gray-200 rounded-full"></div><span className="text-[7px] font-black text-gray-400 uppercase">Entregado</span></div>
               </div>
 
               <div className="flex gap-3">
@@ -107,24 +123,6 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedido }) => {
               </div>
             </div>
           ))}
-
-          <h3 className="font-bold text-gray-400 text-sm mb-4 mt-8 uppercase tracking-wide">Historial de Pedidos</h3>
-          <div className="flex flex-col gap-3">
-            <div className="bg-gray-50 rounded-2xl p-3 flex items-center gap-3 border border-gray-100 opacity-70">
-              <div className="w-14 h-14 bg-gray-200 rounded-xl flex items-center justify-center text-gray-400 text-[10px] font-bold shrink-0">IMG</div>
-              <div className="flex-1">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="bg-green-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase">Entregado</span>
-                  <span className="text-gray-400 text-[8px]">Ayer, 02:15 PM</span>
-                </div>
-                <h4 className="font-bold text-xs text-gray-800">Pay de Queso</h4>
-                <p className="text-gray-400 text-[9px]">Postres Express</p>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span className="font-black text-sm text-gray-800">$30.00</span>
-              </div>
-            </div>
-          </div>
 
         </div>
 
