@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { initDB } from './src/config/db.js';
 
 import authRoutes from './src/routes/authRoutes.js';
 import productRoutes from './src/routes/productRoutes.js';
@@ -15,9 +14,6 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
-
-// Conexión e inicialización de la Base de Datos
-initDB();
 
 // Endpoints API
 app.use('/api/auth', authRoutes);

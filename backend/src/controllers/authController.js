@@ -26,40 +26,46 @@ export async function registro(req, res) {
 }
 
 export async function login(req, res) {
-  const { correo, password } = req.body;
-  try {
-    let resultado = await pool.query('SELECT * FROM usuarios WHERE correo = $1', [correo]);
-    let usuario = resultado.rows[0];
+  const { correo, password } = req.body ?? {};
+  if (typeof correo !== 'string' || typeof password !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim()) || !password) {
+    return res.status(400).json({ mensaje: 'Ingresa un correo y contraseña válidos' });
+  }
 
-    if (!usuario) {
-      // Si entra por primera vez, crea el usuario demo automáticamente
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const nuevo = await pool.query(
-        'INSERT INTO usuarios (nombre, correo, password, carrera) VALUES ($1, $2, $3, $4) RETURNING *',
-        ['Cintia Yadai Salinas Montesinos', correo, hashedPassword, 'Ing. Sistemas Computacionales']
-      );
-      usuario = nuevo.rows[0];
-    } else {
-      const passwordValida = await bcrypt.compare(password, usuario.password);
-      if (!passwordValida) {
-        return res.status(400).json({ mensaje: 'Contraseña incorrecta' });
-      }
+  try {
+    const resultado = await pool.query(
+      'SELECT id_usuario, nombre, correo, contrasena_hash, estado FROM public.usuarios WHERE LOWER(correo) = LOWER($1) LIMIT 1',
+      [correo.trim()]
+    );
+    const usuario = resultado.rows[0];
+    const valida = usuario?.contrasena_hash
+      ? await bcrypt.compare(password, usuario.contrasena_hash)
+      : false;
+
+    if (!usuario || !valida || usuario.estado?.toLowerCase() !== 'activo') {
+      return res.status(401).json({ mensaje: 'Correo o contraseña incorrectos' });
     }
 
-    const token = jwt.sign({ id: usuario.id, correo: usuario.correo }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ mensaje: 'Autenticación no configurada' });
+    }
+
+    const token = jwt.sign(
+      { id: usuario.id_usuario, correo: usuario.correo },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
 
     res.json({
       mensaje: 'Inicio de sesión exitoso',
       token,
       usuario: {
-        id: usuario.id,
+        id_usuario: usuario.id_usuario,
         nombre: usuario.nombre,
-        correo: usuario.correo,
-        carrera: usuario.carrera,
-        es_emprendedor: Boolean(usuario.es_emprendedor)
+        correo: usuario.correo
       }
     });
   } catch (error) {
-    res.status(500).json({ mensaje: 'Error en inicio de sesión', error: error.message });
+    console.error('Error de autenticación:', error);
+    res.status(500).json({ mensaje: 'No fue posible validar la cuenta' });
   }
 }

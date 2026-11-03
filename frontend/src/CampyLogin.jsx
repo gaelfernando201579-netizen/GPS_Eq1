@@ -6,9 +6,33 @@ const CampyLogin = ({ alIngresar }) => {
   const [password, setPassword] = useState('');
   const [rol, setRol] = useState('comprador'); 
 
- const manejarLogin = (e) => {
+  const [error, setError] = useState('');
+  const [cargando, setCargando] = useState(false);
+
+  const manejarLogin = async (e) => {
     e.preventDefault();
-    alIngresar(); 
+    setError('');
+    setCargando(true);
+
+    try {
+      const respuesta = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ correo: correo.trim(), password })
+      });
+
+      if (!respuesta.ok) {
+        setError(respuesta.status === 401 ? 'Correo o contraseña incorrectos.' : 'No fue posible validar tu cuenta.');
+        return;
+      }
+
+      const datos = await respuesta.json();
+      alIngresar(datos.usuario);
+    } catch {
+      setError('No se pudo conectar con el servidor.');
+    } finally {
+      setCargando(false);
+    }
   };
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center font-sans">
@@ -39,7 +63,7 @@ const CampyLogin = ({ alIngresar }) => {
             <div className="relative">
               <span className="absolute left-4 top-4 text-gray-400"></span>
               <input
-                type="text"
+                type="email"
                 value={correo}
                 onChange={(e) => setCorreo(e.target.value)}
                 placeholder="Correo electronico"
@@ -68,8 +92,10 @@ const CampyLogin = ({ alIngresar }) => {
               <a href="#" className="hover:text-orange-300 transition-colors">¿Olvidaste tu NIP?</a>
             </div>
 
-            <button type="submit" className="w-full bg-[#FF8C00] hover:bg-[#e67e00] text-white font-black text-lg py-4 rounded-full shadow-lg mt-6 transition-transform active:scale-95 flex justify-center items-center gap-2">
-              INGRESAR 
+            {error && <p role="alert" className="text-white text-sm text-center">{error}</p>}
+
+            <button type="submit" disabled={cargando} className="w-full bg-[#FF8C00] hover:bg-[#e67e00] text-white font-black text-lg py-4 rounded-full shadow-lg mt-6 transition-transform active:scale-95 flex justify-center items-center gap-2">
+              {cargando ? 'VALIDANDO...' : 'INGRESAR'}
             </button>
           </form>
         </div>
