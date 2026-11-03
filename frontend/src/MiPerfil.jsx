@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
 
-const MiPerfil = ({ irAInicio, irAPedidos, cerrarSesion }) => {
+const MiPerfil = ({ irAInicio, irAPedidos, cerrarSesion, usuario }) => {
   const [modoEmprendedor, setModoEmprendedor] = useState(false);
   const [modalActivo, setModalActivo] = useState(null); 
 
@@ -35,7 +35,7 @@ const MiPerfil = ({ irAInicio, irAPedidos, cerrarSesion }) => {
                 👩🏻‍💻
               </div>
               <div className="flex-1">
-                <h3 className="font-black text-[15px] text-gray-900 leading-tight">Cintia Yadai Salinas Montesinos</h3>
+                <h3 className="font-black text-[15px] text-gray-900 leading-tight">{usuario?.nombre || 'Usuario'}</h3>
                 <p className="text-gray-600 text-xs mt-1 font-medium">Ing. Sistemas Computacionales</p>
               </div>
             </div>
@@ -121,7 +121,7 @@ const MiPerfil = ({ irAInicio, irAPedidos, cerrarSesion }) => {
             <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6"></div>
             <h2 className="text-xl font-black text-[#0A3895] mb-6">Editar Perfil</h2>
             <div className="flex flex-col gap-4">
-              <input type="text" defaultValue="Cintia Yadai Salinas Montesinos" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 outline-none focus:border-blue-500" />
+              <input type="text" defaultValue={usuario?.nombre || ''} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-800 outline-none focus:border-blue-500" />
               <input type="text" defaultValue="Ing. Sistemas Computacionales" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-gray-600 outline-none focus:border-blue-500" />
               <input type="tel" placeholder="Número de teléfono" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500" />
               <button onClick={() => setModalActivo(null)} className="w-full bg-[#0A3895] text-white font-bold py-4 rounded-xl shadow-lg mt-2 active:scale-95 transition-transform">Guardar Cambios</button>

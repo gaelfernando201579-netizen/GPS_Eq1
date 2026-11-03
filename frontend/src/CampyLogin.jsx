@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
 
-const CampyLogin = ({ alIngresar }) => {
+const CampyLogin = ({ alIngresar, irARegistro, registroExitoso = false }) => {
   const [correo, setCorreo] = useState('');
   const [password, setPassword] = useState('');
   const [rol, setRol] = useState('comprador'); 
@@ -92,10 +92,18 @@ const CampyLogin = ({ alIngresar }) => {
               <a href="#" className="hover:text-orange-300 transition-colors">¿Olvidaste tu NIP?</a>
             </div>
 
+            {registroExitoso && <p role="status" className="text-white text-sm text-center">Cuenta creada correctamente. Ahora inicia sesión.</p>}
             {error && <p role="alert" className="text-white text-sm text-center">{error}</p>}
 
             <button type="submit" disabled={cargando} className="w-full bg-[#FF8C00] hover:bg-[#e67e00] text-white font-black text-lg py-4 rounded-full shadow-lg mt-6 transition-transform active:scale-95 flex justify-center items-center gap-2">
               {cargando ? 'VALIDANDO...' : 'INGRESAR'}
+            </button>
+            <button
+              type="button"
+              onClick={irARegistro}
+              className="text-white font-bold text-sm hover:text-orange-300 transition-colors mt-1"
+            >
+              ¿No tienes cuenta? Regístrate
             </button>
           </form>
         </div>

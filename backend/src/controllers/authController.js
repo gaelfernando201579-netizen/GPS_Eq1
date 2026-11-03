@@ -3,25 +3,50 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../config/db.js';
 
 export async function registro(req, res) {
-  const { nombre, correo, password, carrera } = req.body;
-  try {
-    const usuarioExistente = await pool.query('SELECT * FROM usuarios WHERE correo = $1', [correo]);
-    
-    if (usuarioExistente.rows.length > 0) {
-      return res.status(400).json({ mensaje: 'El correo ya está registrado' });
-    }
+  const { nombre, correo, password, telefono } = req.body ?? {};
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const nuevoUsuario = await pool.query(
-      'INSERT INTO usuarios (nombre, correo, password, carrera) VALUES ($1, $2, $3, $4) RETURNING id, correo',
-      [nombre, correo, hashedPassword, carrera || 'Ing. Sistemas Computacionales']
+  if (
+    typeof nombre !== 'string' || nombre.trim().length < 3 || nombre.trim().length > 120 ||
+    typeof correo !== 'string' || correo.trim().length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim()) ||
+    typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72 ||
+    typeof telefono !== 'string' || !/^\d{10}$/.test(telefono.trim())
+  ) {
+    return res.status(400).json({ mensaje: 'Revisa tu nombre, correo, teléfono de 10 dígitos y contraseña de al menos 8 caracteres.' });
+  }
+
+  const nombreLimpio = nombre.trim();
+  const correoLimpio = correo.trim().toLowerCase();
+  const telefonoLimpio = telefono.trim();
+
+  try {
+    const existente = await pool.query(
+      'SELECT 1 FROM public.usuarios WHERE LOWER(correo) = $1 LIMIT 1',
+      [correoLimpio]
     );
 
-    const token = jwt.sign({ id: nuevoUsuario.rows[0].id, correo }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    if (existente.rows.length > 0) {
+      return res.status(409).json({ mensaje: 'El correo ya está registrado.' });
+    }
 
-    res.status(201).json({ mensaje: 'Usuario registrado con éxito', token });
+    const contrasenaHash = await bcrypt.hash(password, 12);
+    const resultado = await pool.query(
+      `INSERT INTO public.usuarios
+        (nombre, correo, contrasena_hash, telefono, tipo_comunidad, estado, fecha_registro)
+       VALUES ($1, $2, $3, $4, 'Estudiante', 'Activo', CURRENT_TIMESTAMP)
+       RETURNING id_usuario, nombre, correo`,
+      [nombreLimpio, correoLimpio, contrasenaHash, telefonoLimpio]
+    );
+
+    return res.status(201).json({
+      mensaje: 'Usuario registrado con éxito.',
+      usuario: resultado.rows[0]
+    });
   } catch (error) {
-    res.status(500).json({ mensaje: 'Error al registrar usuario', error: error.message });
+    if (error.code === '23505') {
+      return res.status(409).json({ mensaje: 'El correo ya está registrado.' });
+    }
+    console.error('Error al registrar usuario:', error);
+    return res.status(500).json({ mensaje: 'No fue posible registrar tu cuenta.' });
   }
 }
 
