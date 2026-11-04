@@ -1,25 +1,53 @@
 import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
 
+const opcionesCarrera = [
+  'Licenciatura en Administración',
+  'Contador Público',
+  'Ingeniería Civil',
+  'Ingeniería Eléctrica',
+  'Ingeniería Electrónica',
+  'Ingeniería en Gestión Empresarial',
+  'Ingeniería Industrial',
+  'Ingeniería Mecánica',
+  'Ingeniería Química',
+  'Ingeniería en Sistemas Computacionales'
+];
+
 const CampyLogin = ({ alIngresar }) => {
   const [modoRegistro, setModoRegistro] = useState(false);
   const [nombre, setNombre] = useState('');
-  const [carrera, setCarrera] = useState('Ing. Sistemas Computacionales');
+  const [carreras, setCarreras] = useState([]);
+  const [selectorCarrerasAbierto, setSelectorCarrerasAbierto] = useState(false);
+  const [verPassword, setVerPassword] = useState(false);
+  const [telefono, setTelefono] = useState('');
   const [correo, setCorreo] = useState('');
   const [password, setPassword] = useState('');
 
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
+  const cambiarCarrera = (opcion) => {
+    setCarreras((actuales) =>
+      actuales.includes(opcion)
+        ? actuales.filter((item) => item !== opcion)
+        : [...actuales, opcion]
+    );
+  };
+
   const manejarSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (modoRegistro && carreras.length === 0) {
+      setError('Selecciona al menos una carrera.');
+      return;
+    }
     setCargando(true);
 
     const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
     const endpoint = modoRegistro ? '/api/auth/registro' : '/api/auth/login';
     const payload = modoRegistro
-      ? { nombre: nombre.trim(), correo: correo.trim(), password, carrera }
+      ? { nombre: nombre.trim(), correo: correo.trim(), telefono: telefono.trim(), password, carrera: carreras.join(', ') }
       : { correo: correo.trim(), password };
 
     try {
@@ -35,7 +63,7 @@ const CampyLogin = ({ alIngresar }) => {
           datos.usuario || {
             nombre: modoRegistro ? nombre.trim() : correo.split('@')[0],
             correo: correo.trim(),
-            carrera
+            carrera: carreras.join(', ')
           }
         );
         return;
@@ -44,12 +72,7 @@ const CampyLogin = ({ alIngresar }) => {
         setError(errData.mensaje || 'Credenciales inválidas o error en la cuenta.');
       }
     } catch {
-      // Modo local de respaldo para que funcione perfectamente en el frontend aunque el backend esté apagado
-      alIngresar({
-        nombre: modoRegistro ? nombre.trim() : (correo.split('@')[0] || 'Estudiante ITO'),
-        correo: correo.trim(),
-        carrera
-      });
+      setError('No se pudo conectar con el servidor. Verifica que el backend esté encendido.');
     } finally {
       setCargando(false);
     }
@@ -126,11 +149,57 @@ const CampyLogin = ({ alIngresar }) => {
                   className="w-full bg-white rounded-full py-3.5 px-5 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md"
                   required
                 />
+                <div className="relative w-full">
+                  <button
+                    type="button"
+                    aria-expanded={selectorCarrerasAbierto}
+                    aria-controls="opciones-carreras"
+                    onClick={() => setSelectorCarrerasAbierto(!selectorCarrerasAbierto)}
+                    className="w-full bg-white rounded-full py-3.5 pl-5 pr-12 text-left text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md flex items-center"
+                  >
+                    <span className={`block truncate ${carreras.length ? 'text-gray-800' : 'text-gray-400'}`}>
+                      {carreras.length === 0
+                        ? 'Selecciona tu(s) carrera(s)'
+                        : carreras.length === 1
+                          ? carreras[0]
+                          : `${carreras.length} carreras seleccionadas`}
+                    </span>
+                    <svg className="absolute right-5 w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                  {selectorCarrerasAbierto && (
+                    <div id="opciones-carreras" className="absolute z-30 top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+                      <div className="max-h-56 overflow-y-auto py-2">
+                        {opcionesCarrera.map((opcion) => (
+                          <label key={opcion} className="flex items-center gap-3 px-4 py-2 text-sm text-gray-800 cursor-pointer hover:bg-orange-50">
+                            <input
+                              type="checkbox"
+                              checked={carreras.includes(opcion)}
+                              onChange={() => cambiarCarrera(opcion)}
+                              className="w-4 h-4 shrink-0 accent-[#FF8C00]"
+                            />
+                            <span>{opcion}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="border-t border-gray-200 px-3 py-2 flex justify-end">
+                        <button type="button" onClick={() => setSelectorCarrerasAbierto(false)} className="text-[#0A3895] text-sm font-bold px-3 py-1 rounded-lg hover:bg-gray-100">
+                          Listo
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <input
-                  type="text"
-                  value={carrera}
-                  onChange={(e) => setCarrera(e.target.value)}
-                  placeholder="Carrera (ej. Ing. Sistemas Computacionales)"
+                  type="tel"
+                  value={telefono}
+                  onChange={(e) => setTelefono(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  placeholder="Teléfono (10 dígitos)"
+                  inputMode="numeric"
+                  pattern="[0-9]{10}"
+                  maxLength={10}
+                  title="Ingresa un teléfono de 10 dígitos"
                   className="w-full bg-white rounded-full py-3.5 px-5 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md"
                   required
                 />
@@ -146,14 +215,42 @@ const CampyLogin = ({ alIngresar }) => {
               required
             />
 
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Contraseña"
-              className="w-full bg-white rounded-full py-3.5 px-5 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md"
-              required
-            />
+            <div className="relative w-full">
+              <input
+                type={!modoRegistro && verPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Contraseña"
+                className={`w-full bg-white rounded-full py-3.5 pl-5 ${!modoRegistro ? 'pr-16' : 'pr-5'} text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md`}
+                required
+              />
+              {!modoRegistro && (
+                <div className="absolute inset-y-0 right-0 flex items-center pr-4">
+                  <button
+                    type="button"
+                    onClick={() => setVerPassword(!verPassword)}
+                    aria-label={verPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                    title={verPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                    aria-pressed={verPassword}
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-[#0A3895] focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    {verPassword ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M3 3l18 18" />
+                        <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                        <path d="M9.9 5.1A10.5 10.5 0 0 1 12 5c5 0 9.3 4.2 10 7-.2 1.1-1.4 3-3 4.4" />
+                        <path d="M6.6 6.6C4.4 8 2.6 10 2 12c.7 2.8 5 7 10 7 1.4 0 2.7-.3 4-.8" />
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
 
             {!modoRegistro && (
               <div className="flex justify-between items-center text-white text-[11px] font-medium px-2 mt-0.5">
