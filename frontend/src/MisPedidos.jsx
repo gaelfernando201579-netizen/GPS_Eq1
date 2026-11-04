@@ -13,7 +13,8 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedido, pedidosVendedor = [] }) => {
           ubicacion: item.ubicacion,
           items: [],
           total: 0,
-          idPedido: 48201
+          idPedido: 48201,
+          createdAt: new Date() // Marca de tiempo para evaluar el límite de cancelación
         };
       }
       pedidosPorVendedor[item.tienda].items.push(item);
@@ -23,6 +24,26 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedido, pedidosVendedor = [] }) => {
 
   const listaDeEntregas = Object.values(pedidosPorVendedor);
   const pedidosCanceladosConNota = pedidosVendedor.filter(p => p.estado === 'Cancelado' && p.notaCancelacion);
+
+  // Lógica de validación de cancelación (ej. Límite de 10 minutos y revisión de política del producto)
+  const validarCancelacion = (entrega) => {
+    const TIEMPO_LIMITE_MINUTOS = 10;
+    const ahora = new Date();
+    const minutosTranscurridos = (ahora - new Date(entrega.createdAt)) / (1000 * 60);
+
+    // Revisar si algún producto de la orden tiene prohibida la cancelación (allow_cancellation === false)
+    const tieneProductoSinCancelacion = entrega.items.some(item => item.allow_cancellation === false);
+
+    if (tieneProductoSinCancelacion) {
+      return { puede: false, motivo: 'Este pedido incluye productos de venta final que no aceptan cancelación.' };
+    }
+
+    if (minutosTranscurridos > TIEMPO_LIMITE_MINUTOS) {
+      return { puede: false, motivo: `El tiempo límite para cancelar ha expirado (máximo ${TIEMPO_LIMITE_MINUTOS} minutos).` };
+    }
+
+    return { puede: true, motivo: '' };
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center font-sans">
@@ -64,65 +85,88 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedido, pedidosVendedor = [] }) => {
             </div>
           )}
 
-          {listaDeEntregas.map((entrega, index) => (
-            <div key={index} className="border-2 border-[#FF8C00] rounded-3xl p-4 shadow-sm relative mb-6 bg-white">
-              <div className="flex justify-between items-center mb-4">
-                <span className="bg-[#FF8C00] text-white text-[10px] font-black px-3 py-1 rounded-full uppercase flex items-center gap-1">
-                  <span>⚡</span> Pedido en camino
-                </span>
-                <span className="text-gray-400 text-[10px] font-bold">Pedido #{entrega.idPedido}</span>
-              </div>
+          {listaDeEntregas.map((entrega, index) => {
+            const estadoCancelacion = validarCancelacion(entrega);
 
-              <div className="flex flex-col gap-3 mb-4">
-                {entrega.items.map((item, idx) => (
-                  <div key={idx} className="flex gap-4 items-center bg-gray-50 p-2 rounded-2xl border border-gray-100">
-                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-gray-400 text-[10px] font-bold shrink-0 border border-gray-200 overflow-hidden">
-                      {item.imagen ? (
-                        <img src={item.imagen} alt={item.nombre} className="w-full h-full object-cover" />
-                      ) : (
-                        'IMG'
-                      )}
+            return (
+              <div key={index} className="border-2 border-[#FF8C00] rounded-3xl p-4 shadow-sm relative mb-6 bg-white">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="bg-[#FF8C00] text-white text-[10px] font-black px-3 py-1 rounded-full uppercase flex items-center gap-1">
+                    <span>⚡</span> Pedido en camino
+                  </span>
+                  <span className="text-gray-400 text-[10px] font-bold">Pedido #{entrega.idPedido}</span>
+                </div>
+
+                <div className="flex flex-col gap-3 mb-4">
+                  {entrega.items.map((item, idx) => (
+                    <div key={idx} className="flex gap-4 items-center bg-gray-50 p-2 rounded-2xl border border-gray-100">
+                      <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-gray-400 text-[10px] font-bold shrink-0 border border-gray-200 overflow-hidden">
+                        {item.imagen ? (
+                          <img src={item.imagen} alt={item.nombre} className="w-full h-full object-cover" />
+                        ) : (
+                          'IMG'
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-black text-sm text-gray-800 leading-tight">
+                          <span className="text-[#FF8C00]">{item.cantidad}x</span> {item.nombre}
+                        </h3>
+                        <p className="text-gray-400 text-[9px] mt-0.5">{entrega.tienda}</p>
+                        {item.allow_cancellation === false && (
+                          <span className="text-[9px] text-red-500 font-bold block">No acepta cancelación</span>
+                        )}
+                      </div>
+                      <span className="text-gray-800 font-black text-sm px-2">${(item.precio * item.cantidad).toFixed(2)}</span>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-black text-sm text-gray-800 leading-tight">
-                        <span className="text-[#FF8C00]">{item.cantidad}x</span> {item.nombre}
-                      </h3>
-                      <p className="text-gray-400 text-[9px] mt-0.5">{entrega.tienda}</p>
-                    </div>
-                    <span className="text-gray-800 font-black text-sm px-2">${(item.precio * item.cantidad).toFixed(2)}</span>
+                  ))}
+                </div>
+
+                <div className="border-t border-gray-100 my-3 pt-3 flex justify-between items-center px-1">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Total ({entrega.tienda})</span>
+                  <span className="text-[#FF8C00] font-black text-xl">${entrega.total.toFixed(2)}</span>
+                </div>
+
+                <div className="bg-gray-50 rounded-2xl p-3 flex gap-3 items-center mb-4 border border-gray-100 mt-2">
+                  <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-black text-lg shrink-0">C</div>
+                  <div className="flex-1">
+                    <h4 className="font-black text-xs text-gray-800">¡Ya casi llega!</h4>
+                    <p className="text-gray-500 text-[10px] leading-tight mt-0.5">
+                      Tu vendedor viene desde <span className="text-[#FF8C00] font-bold">{entrega.ubicacion}</span>.
+                    </p>
                   </div>
-                ))}
-              </div>
-
-              <div className="border-t border-gray-100 my-3 pt-3 flex justify-between items-center px-1">
-                <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Total ({entrega.tienda})</span>
-                <span className="text-[#FF8C00] font-black text-xl">${entrega.total.toFixed(2)}</span>
-              </div>
-
-              <div className="bg-gray-50 rounded-2xl p-3 flex gap-3 items-center mb-5 border border-gray-100 mt-2">
-                <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-black text-lg shrink-0">C</div>
-                <div className="flex-1">
-                  <h4 className="font-black text-xs text-gray-800">¡Ya casi llega!</h4>
-                  <p className="text-gray-500 text-[10px] leading-tight mt-0.5">
-                    Tu vendedor viene desde <span className="text-[#FF8C00] font-bold">{entrega.ubicacion}</span>.
-                  </p>
+                  <div className="bg-white border border-[#FF8C00] text-[#FF8C00] flex flex-col items-center justify-center px-2 py-1 rounded-lg shrink-0 shadow-sm">
+                    <span className="text-[8px] font-black uppercase">Llega en</span>
+                    <span className="text-sm font-black">5 min</span>
+                  </div>
                 </div>
-                <div className="bg-white border border-[#FF8C00] text-[#FF8C00] flex flex-col items-center justify-center px-2 py-1 rounded-lg shrink-0 shadow-sm">
-                  <span className="text-[8px] font-black uppercase">Llega en</span>
-                  <span className="text-sm font-black">5 min</span>
+
+                {/* Validación visual de cancelación con tiempo límite y restricciones */}
+                <div className="mb-4">
+                  {estadoCancelacion.puede ? (
+                    <button 
+                      onClick={() => alert('Solicitud de cancelación enviada al vendedor.')}
+                      className="w-full bg-red-50 text-red-600 border border-red-200 font-bold text-xs py-2.5 rounded-xl hover:bg-red-100 transition-colors"
+                    >
+                      Cancelar pedido (Límite 10 min)
+                    </button>
+                  ) : (
+                    <p className="text-[11px] text-red-500 bg-red-50 p-2 rounded-xl text-center font-medium border border-red-100">
+                      ⚠️ No disponible: {estadoCancelacion.motivo}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex gap-3">
+                  <button className="flex-1 bg-white border-2 border-gray-200 text-gray-600 font-bold text-sm py-3 rounded-xl flex justify-center items-center gap-2 hover:bg-gray-50 transition-colors">
+                    <span>💬</span> Contactar
+                  </button>
+                  <button className="flex-1 bg-[#FF8C00] text-white font-bold text-sm py-3 rounded-xl shadow-lg hover:bg-[#e67e00] transition-colors">
+                    Recibí mi pedido
+                  </button>
                 </div>
               </div>
-
-              <div className="flex gap-3">
-                <button className="flex-1 bg-white border-2 border-gray-200 text-gray-600 font-bold text-sm py-3 rounded-xl flex justify-center items-center gap-2 hover:bg-gray-50 transition-colors">
-                  <span>💬</span> Contactar
-                </button>
-                <button className="flex-1 bg-[#FF8C00] text-white font-bold text-sm py-3 rounded-xl shadow-lg hover:bg-[#e67e00] transition-colors">
-                  Recibí mi pedido
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
         </div>
 

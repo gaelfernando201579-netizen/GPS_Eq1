@@ -7,6 +7,7 @@ const CampyRegistro = ({ alRegistrar, volverAlLogin }) => {
   const [telefono, setTelefono] = useState('');
   const [password, setPassword] = useState('');
   const [confirmarPassword, setConfirmarPassword] = useState('');
+  const [verPassword, setVerPassword] = useState(false);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
@@ -109,16 +110,43 @@ const CampyRegistro = ({ alRegistrar, volverAlLogin }) => {
               className={estiloCampo}
               required
             />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Contraseña (mínimo 8 caracteres)"
-              autoComplete="new-password"
-              minLength={8}
-              className={estiloCampo}
-              required
-            />
+
+            {/* Campo Contraseña con Botón de Ver/Ocultar */}
+            <div className="relative w-full">
+              <input
+                type={verPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Contraseña (mínimo 8 caracteres)"
+                autoComplete="new-password"
+                minLength={8}
+                className="w-full bg-white rounded-full py-4 pl-7 pr-16 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md"
+                required
+              />
+              <div className="absolute inset-y-0 right-0 flex items-center pr-4">
+                <button
+                  type="button"
+                  onClick={() => setVerPassword(!verPassword)}
+                  aria-label={verPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-[#0A3895] focus:outline-none"
+                >
+                  {verPassword ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 3l18 18" />
+                      <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+                      <path d="M9.9 5.1A10.5 10.5 0 0 1 12 5c5 0 9.3 4.2 10 7-.2 1.1-1.4 3-3 4.4" />
+                      <path d="M6.6 6.6C4.4 8 2.6 10 2 12c.7 2.8 5 7 10 7 1.4 0 2.7-.3 4-.8" />
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
             <input
               type="password"
               value={confirmarPassword}

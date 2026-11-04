@@ -1,3 +1,4 @@
+// db.js
 import pkg from 'pg';
 import dotenv from 'dotenv';
 
@@ -34,13 +35,14 @@ export async function initDB() {
         ubicacion VARCHAR(255) NOT NULL,
         precio NUMERIC(10, 2) NOT NULL,
         categoria VARCHAR(100) NOT NULL,
-        vendedor_id INTEGER REFERENCES usuarios(id)
+        vendedor_id INTEGER REFERENCES usuarios(id),
+        allow_cancellation BOOLEAN DEFAULT TRUE
       );
 
       CREATE TABLE IF NOT EXISTS pedidos (
         id SERIAL PRIMARY KEY,
         comprador_id INTEGER NOT NULL REFERENCES usuarios(id),
-        estado VARCHAR(50) DEFAULT 'Confirmado',
+        estado VARCHAR(50) DEFAULT 'En Camino',
         total NUMERIC(10, 2) NOT NULL,
         fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -58,24 +60,24 @@ export async function initDB() {
     const resCount = await pool.query('SELECT COUNT(*) FROM productos');
     if (parseInt(resCount.rows[0].count) === 0) {
       await pool.query(`
-        INSERT INTO productos (nombre, tienda, ubicacion, precio, categoria) VALUES
-        ('Torta de Jamón', 'Vende: Juan Pérez', 'Edificio L', 35, 'Comida'),
-        ('Croissant Preparado', 'Vende: Ana Gómez', 'Kiosco Central', 45, 'Comida'),
-        ('Rebanada de Pizza', 'Vende: Luis', 'Canchas', 25, 'Comida'),
-        ('Fresas con Crema', 'Vende: María', 'Entrada Principal', 45, 'Postres'),
-        ('Tartaletas de Frutas', 'Vende: Sofía', 'Edificio D', 30, 'Postres'),
-        ('Memoria USB 32GB', 'Vende: Carlos', 'Biblioteca', 120, 'Tecnología'),
-        ('Paquete 5 Folders', 'Vende: Diana', 'Biblioteca', 15, 'Papelería'),
-        ('Coca-Cola 600ml', 'Vende: Juan Pérez', 'Edificio L', 20, 'Bebidas'),
-        ('Arizona de Sandía', 'Vende: Luis', 'Canchas', 25, 'Bebidas'),
-        ('Electrolit Fresa', 'Vende: Ana Gómez', 'Kiosco Central', 32, 'Bebidas'),
-        ('Doritos Nacho', 'Vende: Pedro', 'Pasillo Central', 18, 'Sabritas'),
-        ('Picafresas (10pz)', 'Vende: María', 'Entrada Principal', 15, 'Dulces');
+        INSERT INTO productos (nombre, tienda, ubicacion, precio, categoria, allow_cancellation) VALUES
+        ('Torta de Jamón', 'Vende: Juan Pérez', 'Edificio L', 35, 'Comida', TRUE),
+        ('Croissant Preparado', 'Vende: Ana Gómez', 'Kiosco Central', 45, 'Comida', TRUE),
+        ('Rebanada de Pizza', 'Vende: Luis', 'Canchas', 25, 'Comida', FALSE),
+        ('Fresas con Crema', 'Vende: María', 'Entrada Principal', 45, 'Postres', TRUE),
+        ('Tartaletas de Frutas', 'Vende: Sofía', 'Edificio D', 30, 'Postres', TRUE),
+        ('Memoria USB 32GB', 'Vende: Carlos', 'Biblioteca', 120, 'Tecnología', FALSE),
+        ('Paquete 5 Folders', 'Vende: Diana', 'Biblioteca', 15, 'Papelería', TRUE),
+        ('Coca-Cola 600ml', 'Vende: Juan Pérez', 'Edificio L', 20, 'Bebidas', TRUE),
+        ('Arizona de Sandía', 'Vende: Luis', 'Canchas', 25, 'Bebidas', TRUE),
+        ('Electrolit Fresa', 'Vende: Ana Gómez', 'Kiosco Central', 32, 'Bebidas', TRUE),
+        ('Doritos Nacho', 'Vende: Pedro', 'Pasillo Central', 18, 'Sabritas', TRUE),
+        ('Picafresas (10pz)', 'Vende: María', 'Entrada Principal', 15, 'Dulces', TRUE);
       `);
     }
 
-    console.log('📦 Conectado exitosamente a Supabase (PostgreSQL)');
+    console.log('Conectado exitosamente a Supabase (PostgreSQL)');
   } catch (error) {
-    console.error('❌ Error al conectar o inicializar la BD:', error.message);
+    console.error('Error al conectar o inicializar la BD:', error.message);
   }
 }

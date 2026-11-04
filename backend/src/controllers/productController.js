@@ -1,3 +1,4 @@
+// controllers/productController.js
 import { pool } from '../config/db.js';
 
 export async function obtenerProductos(req, res) {
@@ -25,14 +26,23 @@ export async function obtenerProductos(req, res) {
 }
 
 export async function crearProducto(req, res) {
-  const { nombre, tienda, ubicacion, precio, categoria } = req.body;
+  const { nombre, tienda, ubicacion, precio, categoria, allow_cancellation } = req.body;
   try {
+    const permiteCancelacion = allow_cancellation !== undefined ? allow_cancellation : true;
     const result = await pool.query(
-      'INSERT INTO productos (nombre, tienda, ubicacion, precio, categoria, vendedor_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-      [nombre, tienda, ubicacion, precio, categoria, req.usuario.id]
+      'INSERT INTO productos (nombre, tienda, ubicacion, precio, categoria, vendedor_id, allow_cancellation) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+      [nombre, tienda, ubicacion, precio, categoria, req.usuario.id, permiteCancelacion]
     );
 
-    res.status(201).json({ id: result.rows[0].id, nombre, tienda, ubicacion, precio, categoria });
+    res.status(201).json({ 
+      id: result.rows[0].id, 
+      nombre, 
+      tienda, 
+      ubicacion, 
+      precio, 
+      categoria, 
+      allow_cancellation: permiteCancelacion 
+    });
   } catch (error) {
     res.status(500).json({ mensaje: 'Error al crear producto', error: error.message });
   }
