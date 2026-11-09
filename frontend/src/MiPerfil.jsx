@@ -8,7 +8,9 @@ const MiPerfil = ({
   usuario,
   setUsuario,
   registrarComoVendedor,
+  registrarComoRepartidor,
   irAPanelVendedor,
+  irAPanelRepartidor,
   irAInicio,
   irAPedidos,
   cerrarSesion
@@ -20,7 +22,7 @@ const MiPerfil = ({
   const [carreraEdit, setCarreraEdit] = useState(usuario?.carrera || 'Ing. Sistemas Computacionales');
   const [telefonoEdit, setTelefonoEdit] = useState(usuario?.telefono || '');
 
-  // Estados para el cuestionario de Alta de Vendedor + Organizador de Horarios
+  // Estados para Alta de Vendedor
   const [idControl, setIdControl] = useState(usuario?.datosVendedor?.identificacion || '');
   const [nombreVendedor, setNombreVendedor] = useState(usuario?.datosVendedor?.nombre || usuario?.nombre || '');
   const [giroVenta, setGiroVenta] = useState(usuario?.datosVendedor?.queVende || '');
@@ -28,6 +30,12 @@ const MiPerfil = ({
   const [matrizHorario, setMatrizHorario] = useState(usuario?.datosVendedor?.matrizHorario || { LUN_10_12: true, MIE_10_12: true, VIE_10_12: true });
   const [notaHorario, setNotaHorario] = useState(usuario?.datosVendedor?.notaHorario || '');
   const [errorHorario, setErrorHorario] = useState('');
+
+  // Estados para Alta de Repartidor
+  const [idControlRep, setIdControlRep] = useState(usuario?.datosRepartidor?.identificacion || '');
+  const [nombreRep, setNombreRep] = useState(usuario?.datosRepartidor?.nombre || usuario?.nombre || '');
+  const [medioRep, setMedioRep] = useState(usuario?.datosRepartidor?.medio || 'A pie (Campus ITO)');
+  const [zonasRep, setZonasRep] = useState(usuario?.datosRepartidor?.zonas || 'Todos los edificios y canchas');
 
   const alternarCeldaHorario = (dia, bloque) => {
     const clave = `${dia}_${bloque}`;
@@ -88,6 +96,17 @@ const MiPerfil = ({
       horarios: horariosTexto
     });
 
+    setModalActivo(null);
+  };
+
+  const manejarAltaRepartidor = async (e) => {
+    e.preventDefault();
+    await registrarComoRepartidor({
+      identificacion: idControlRep.trim(),
+      nombre: nombreRep.trim(),
+      medio: medioRep,
+      zonas: zonasRep.trim()
+    });
     setModalActivo(null);
   };
 
@@ -156,9 +175,9 @@ const MiPerfil = ({
             </button>
           </div>
 
-          {/* APARTADO INFERIOR PARA PASAR A MODO VENDEDOR */}
+          {/* APARTADO 1: MODO VENDEDOR */}
           {!usuario?.esVendedor ? (
-            <div className="bg-gradient-to-r from-[#0A3895] to-[#1e4eb8] rounded-3xl p-5 text-white shadow-lg mb-5">
+            <div className="bg-gradient-to-r from-[#0A3895] to-[#1e4eb8] rounded-3xl p-5 text-white shadow-lg mb-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <span className="bg-[#FF8C00] text-white text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full">
@@ -179,7 +198,7 @@ const MiPerfil = ({
               </button>
             </div>
           ) : (
-            <div className="bg-white rounded-3xl p-5 shadow-sm border-2 border-[#FF8C00] mb-5">
+            <div className="bg-white rounded-3xl p-5 shadow-sm border-2 border-[#FF8C00] mb-4">
               <span className="bg-orange-100 text-[#FF8C00] text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full">
                 Cuenta de Vendedor Activa
               </span>
@@ -187,13 +206,55 @@ const MiPerfil = ({
                 {usuario.datosVendedor?.nombre}
               </h4>
               <p className="text-xs text-gray-500 mt-0.5 mb-3">
-                Cambia a tu vista de vendedor para administrar tus productos y ver tus pedidos por cumplir.
+                Administra tus productos y gestiona tus pedidos por cumplir.
               </p>
               <button
                 onClick={irAPanelVendedor}
                 className="w-full bg-[#FF8C00] hover:bg-[#e67e00] text-white font-black text-xs uppercase py-3.5 rounded-2xl shadow-md transition-transform active:scale-95"
               >
                 Ir a mi Menú de Vendedor ➔
+              </button>
+            </div>
+          )}
+
+          {/* APARTADO 2: MODO REPARTIDOR (ESTILO UBER CAMPUS) */}
+          {!usuario?.esRepartidor ? (
+            <div className="bg-gradient-to-r from-[#15803d] to-[#22C55E] rounded-3xl p-5 text-white shadow-lg mb-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="bg-white/20 text-white text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full">
+                    Repartidores Campus ITO
+                  </span>
+                  <h4 className="font-black text-base mt-2">¿Quieres ser repartidor?</h4>
+                  <p className="text-xs text-white/90 mt-1 leading-relaxed">
+                    Gana dinero extra en tus horas libres llevando pedidos de los vendedores hasta el salón o edificio del comprador.
+                  </p>
+                </div>
+                <span className="text-3xl">🛵</span>
+              </div>
+              <button
+                onClick={() => setModalActivo('altaRepartidor')}
+                className="w-full bg-white text-[#15803d] hover:bg-gray-50 font-black text-xs uppercase tracking-wider py-3.5 rounded-2xl shadow-md mt-4 transition-transform active:scale-95"
+              >
+                Darme de alta como repartidor
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl p-5 shadow-sm border-2 border-[#22C55E] mb-5">
+              <span className="bg-green-100 text-green-700 text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full">
+                Cuenta de Repartidor Activa
+              </span>
+              <h4 className="font-black text-base text-gray-900 mt-1">
+                {usuario.datosRepartidor?.nombre}
+              </h4>
+              <p className="text-xs text-gray-500 mt-0.5 mb-3">
+                Revisa los pedidos disponibles de los vendedores para recolectar y entregar.
+              </p>
+              <button
+                onClick={irAPanelRepartidor}
+                className="w-full bg-[#22C55E] hover:bg-[#16a34a] text-white font-black text-xs uppercase py-3.5 rounded-2xl shadow-md transition-transform active:scale-95"
+              >
+                Ir a mi Menú de Repartidor ➔
               </button>
             </div>
           )}
@@ -226,7 +287,7 @@ const MiPerfil = ({
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-40" onClick={() => setModalActivo(null)}></div>
         )}
 
-        {/* MODAL: CUESTIONARIO DE ALTA DE VENDEDOR CON CAJA DE HORARIOS */}
+        {/* MODAL: ALTA DE VENDEDOR */}
         {modalActivo === 'altaVendedor' && (
           <div className="absolute bottom-0 left-0 w-full max-h-[92%] overflow-y-auto bg-white rounded-t-[30px] p-5 pb-8 z-50 animate-[slideUp_0.3s_ease-out]">
             <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-3"></div>
@@ -286,7 +347,6 @@ const MiPerfil = ({
                 </div>
               </div>
 
-              {/* CAJA DE HORARIOS COMPACTA ESTILO ORGANIZADOR */}
               <div className="bg-[#F4F7FD] border border-blue-100 rounded-2xl p-3 shadow-inner">
                 <div className="flex justify-between items-center mb-1.5">
                   <span className="text-[10px] font-black text-[#0A3895] uppercase tracking-wider">
@@ -297,7 +357,6 @@ const MiPerfil = ({
                   </span>
                 </div>
 
-                {/* Encabezado de días */}
                 <div className="grid grid-cols-7 gap-1 text-center items-center bg-white p-1.5 rounded-xl border border-gray-200">
                   <div className="text-[8px] font-black text-gray-400">HORA</div>
                   {DIAS_SEMANA.map((dia) => (
@@ -306,7 +365,6 @@ const MiPerfil = ({
                     </div>
                   ))}
 
-                  {/* Filas de bloques de horario */}
                   {BLOQUES_HORA.map((bloque) => (
                     <React.Fragment key={bloque}>
                       <div className="text-[8px] font-bold text-gray-500 py-1">{bloque}</div>
@@ -332,7 +390,6 @@ const MiPerfil = ({
                   ))}
                 </div>
 
-                {/* Línea de Notas al pie del organizador (como en la imagen) */}
                 <div className="mt-2 flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-xl border border-gray-200">
                   <span className="text-[9px] font-black text-[#0A3895] uppercase shrink-0">NOTAS:</span>
                   <input
@@ -354,6 +411,75 @@ const MiPerfil = ({
                 className="w-full bg-[#FF8C00] hover:bg-[#e67e00] text-white font-black text-xs uppercase tracking-wider py-3.5 rounded-xl shadow-lg mt-1 active:scale-95 transition-transform"
               >
                 Finalizar Alta e Ir a Vista Vendedor ➔
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* MODAL NUEVO: ALTA DE REPARTIDOR */}
+        {modalActivo === 'altaRepartidor' && (
+          <div className="absolute bottom-0 left-0 w-full max-h-[90%] overflow-y-auto bg-white rounded-t-[30px] p-6 pb-9 z-50 animate-[slideUp_0.3s_ease-out]">
+            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-3"></div>
+            <h2 className="text-lg font-black text-[#15803d]">Alta de Repartidor Campus</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              Regístrate para ver los pedidos que los vendedores necesitan enviar dentro del ITO.
+            </p>
+
+            <form onSubmit={manejarAltaRepartidor} className="flex flex-col gap-3.5">
+              <div>
+                <label className="text-[11px] font-bold text-gray-600 block mb-1">No. Control / Identificación ITO</label>
+                <input
+                  type="text"
+                  value={idControlRep}
+                  onChange={(e) => setIdControlRep(e.target.value)}
+                  placeholder="Ej. 22160989"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-800 outline-none focus:border-[#22C55E]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-gray-600 block mb-1">Tu Nombre Completo</label>
+                <input
+                  type="text"
+                  value={nombreRep}
+                  onChange={(e) => setNombreRep(e.target.value)}
+                  placeholder="Ej. Carlos Yahel"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-800 outline-none focus:border-[#22C55E]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-gray-600 block mb-1">Modalidad de entrega en campus</label>
+                <select
+                  value={medioRep}
+                  onChange={(e) => setMedioRep(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-800 outline-none focus:border-[#22C55E]"
+                >
+                  <option value="A pie (Dentro del Campus ITO)">A pie (Dentro del Campus ITO)</option>
+                  <option value="Bicicleta / Patín">Bicicleta / Patín</option>
+                  <option value="Motocicleta (Accesos y Alrededores)">Motocicleta (Accesos y Alrededores)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-gray-600 block mb-1">Edificios o Zonas que cubres</label>
+                <input
+                  type="text"
+                  value={zonasRep}
+                  onChange={(e) => setZonasRep(e.target.value)}
+                  placeholder="Ej. Edificio L, Biblioteca, Canchas, Kiosco..."
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-800 outline-none focus:border-[#22C55E]"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-[#22C55E] hover:bg-[#16a34a] text-white font-black text-xs uppercase tracking-wider py-4 rounded-xl shadow-lg mt-2 active:scale-95 transition-transform"
+              >
+                Abrir Menú de Repartidor ➔
               </button>
             </form>
           </div>

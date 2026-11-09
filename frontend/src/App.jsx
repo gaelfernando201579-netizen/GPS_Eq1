@@ -4,6 +4,7 @@ import HomeComprador from './HomeComprador';
 import MisPedidos from './MisPedidos';
 import MiPerfil from './MiPerfil';
 import PanelVendedor from './PanelVendedor';
+import PanelRepartidor from './PanelRepartidor';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -22,15 +23,21 @@ const PRODUCTOS_INICIALES = [
   { id: 12, nombre: 'Picafresas (10pz)', tienda: 'Vende: María', ubicacion: 'Entrada Principal', precio: 15, categoria: 'Dulces', definicion: 'Bolsita con 10 picafresas Vero.', comentario: 'También vendo sueltas a $2', imagen: null },
 ];
 
-const PEDIDOS_VENDEDOR_INICIALES = [
+const PEDIDOS_INICIALES = [
   {
     id: 48201,
+    tienda: 'Vende: Juan Pérez',
     compradorNombre: 'Dalia Montserrat Caballero Silva',
     compradorCarrera: 'Ing. Sistemas Computacionales',
+    lugarRecoleccion: 'Kiosco Central',
     puntoEntrega: 'Edificio L - Salón L3',
     hora: '10:30 AM',
     metodoPago: 'Efectivo',
     estado: 'Pendiente',
+    requiereRepartidor: false,
+    repartidorAsignado: null,
+    costoProductoRepartidor: 70,
+    comisionRepartidor: 10,
     notaCancelacion: '',
     total: 70,
     items: [
@@ -39,16 +46,22 @@ const PEDIDOS_VENDEDOR_INICIALES = [
   },
   {
     id: 48209,
+    tienda: 'Vende: Ana Gómez',
     compradorNombre: 'Gael Fernando Ortíz Pérez',
     compradorCarrera: 'Ing. Sistemas Computacionales',
+    lugarRecoleccion: 'Mesas de Kiosco Central',
     puntoEntrega: 'Bancas de Biblioteca Central',
     hora: '11:15 AM',
     metodoPago: 'Transferencia',
-    estado: 'Pendiente',
+    estado: 'En preparación',
+    requiereRepartidor: true,
+    repartidorAsignado: null,
+    costoProductoRepartidor: 45,
+    comisionRepartidor: 12,
     notaCancelacion: '',
     total: 45,
     items: [
-      { nombre: 'Brownie con Nuez', cantidad: 1, precio: 45 }
+      { nombre: 'Croissant Preparado', cantidad: 1, precio: 45 }
     ]
   }
 ];
@@ -61,15 +74,15 @@ function App() {
     correo: 'estudiante@itoaxaca.edu.mx',
     carrera: 'Ing. Sistemas Computacionales',
     esVendedor: false,
-    datosVendedor: null
+    datosVendedor: null,
+    esRepartidor: false,
+    datosRepartidor: null
   });
 
   const [productosCatalogo, setProductosCatalogo] = useState(PRODUCTOS_INICIALES);
   const [carritoGlobal, setCarritoGlobal] = useState({});
-  const [pedidoActivo, setPedidoActivo] = useState(null);
-  const [pedidosPorCumplir, setPedidosPorCumplir] = useState(PEDIDOS_VENDEDOR_INICIALES);
+  const [pedidosPorCumplir, setPedidosPorCumplir] = useState(PEDIDOS_INICIALES);
 
-  // Sincronización inicial con el backend (Supabase) si está disponible
   useEffect(() => {
     fetch(`${API_URL}/api/productos`)
       .then((res) => (res.ok ? res.json() : null))
@@ -78,9 +91,7 @@ function App() {
           setProductosCatalogo(data);
         }
       })
-      .catch(() => {
-        // Mantiene catálogo semilla si el backend está apagado
-      });
+      .catch(() => {});
   }, []);
 
   const manejarIngreso = (datosUsuario, token = null) => {
@@ -100,97 +111,55 @@ function App() {
   };
 
   const procesarCompra = async (itemsComprados) => {
-    setPedidoActivo(itemsComprados);
-
-    // También agrega el pedido a la bandeja de pedidos por cumplir para demostración en vivo
     const totalOrden = itemsComprados.reduce((acc, it) => acc + it.precio * it.cantidad, 0);
     const nuevoPedidoId = Math.floor(Math.random() * 90000) + 10000;
+    const primerItem = itemsComprados[0] || {};
+
     const nuevoPedido = {
       id: nuevoPedidoId,
+      tienda: primerItem.tienda || 'Vendedor Campus ITO',
       compradorNombre: usuarioActual.nombre,
       compradorCarrera: usuarioActual.carrera,
-      puntoEntrega: 'Edificio L - Planta Baja',
+      lugarRecoleccion: primerItem.ubicacion || 'Edificio L',
+      puntoEntrega: 'Edificio L - Salón L3',
       hora: 'Hace un momento',
       metodoPago: 'Efectivo',
       estado: 'Pendiente',
+      requiereRepartidor: false,
+      repartidorAsignado: null,
+      costoProductoRepartidor: totalOrden,
+      comisionRepartidor: 10,
       notaCancelacion: '',
       total: totalOrden,
       items: itemsComprados
     };
+
     setPedidosPorCumplir((prev) => [nuevoPedido, ...prev]);
-
-    try {
-      if (tokenAuth) {
-        await fetch(`${API_URL}/api/pedidos`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${tokenAuth}`
-          },
-          body: JSON.stringify({ items: itemsComprados })
-        });
-      }
-    } catch {
-      // Fallback local activo
-    }
-
+    setCarritoGlobal({});
     setPantallaActual('pedidos');
   };
 
-  // Al darse de alta como vendedor, guarda en backend y SACA al usuario de la vista cliente hacia 'vendedor'
   const registrarComoVendedor = async (datosVendedor) => {
     setUsuarioActual((prev) => ({
       ...prev,
       esVendedor: true,
       datosVendedor
     }));
-
-    try {
-      if (tokenAuth) {
-        await fetch(`${API_URL}/api/usuarios/perfil`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${tokenAuth}`
-          },
-          body: JSON.stringify({
-            nombre: datosVendedor.nombre,
-            es_emprendedor: 1,
-            datos_vendedor: datosVendedor
-          })
-        });
-      }
-    } catch {
-      // Continúa en estado local si el backend no responde
-    }
-
-    // Saca de la vista de cliente y abre el nuevo menú exclusivo de vendedor
     setPantallaActual('vendedor');
   };
 
-  const agregarNuevoProducto = async (nuevoProd) => {
-    let idGenerado = Date.now();
-    try {
-      if (tokenAuth) {
-        const resp = await fetch(`${API_URL}/api/productos`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${tokenAuth}`
-          },
-          body: JSON.stringify(nuevoProd)
-        });
-        if (resp.ok) {
-          const guardado = await resp.json();
-          if (guardado.id) idGenerado = guardado.id;
-        }
-      }
-    } catch {
-      // Fallback local
-    }
+  const registrarComoRepartidor = async (datosRepartidor) => {
+    setUsuarioActual((prev) => ({
+      ...prev,
+      esRepartidor: true,
+      datosRepartidor
+    }));
+    setPantallaActual('repartidor');
+  };
 
+  const agregarNuevoProducto = async (nuevoProd) => {
     setProductosCatalogo((prev) => [
-      { ...nuevoProd, id: idGenerado },
+      { ...nuevoProd, id: Date.now() },
       ...prev
     ]);
   };
@@ -210,10 +179,31 @@ function App() {
     });
   };
 
-  const cambiarEstadoPedidoVendedor = async (pedidoId, nuevoEstado, notaCancelacion = '') => {
+  // Cuando el vendedor acepta un pedido y configura si lo lleva él o un repartidor
+  const configurarAceptacionPedido = async (pedidoId, config) => {
+    setPedidosPorCumplir((prev) =>
+      prev.map((p) => (p.id === pedidoId ? { ...p, ...config } : p))
+    );
+  };
+
+  // Cuando el vendedor o repartidor cambia el estado (En preparación, En camino, En el punto de entrega, Entregado, Cancelado)
+  const cambiarEstadoPedido = async (pedidoId, nuevoEstado, notaCancelacion = '') => {
     setPedidosPorCumplir((prev) =>
       prev.map((p) =>
-        p.id === pedidoId ? { ...p, estado: nuevoEstado, notaCancelacion } : p
+        p.id === pedidoId
+          ? { ...p, estado: nuevoEstado, notaCancelacion: notaCancelacion || p.notaCancelacion }
+          : p
+      )
+    );
+  };
+
+  // Cuando un repartidor acepta llevar un pedido disponible
+  const tomarPedidoRepartidor = (pedidoId, nombreRepartidor) => {
+    setPedidosPorCumplir((prev) =>
+      prev.map((p) =>
+        p.id === pedidoId
+          ? { ...p, repartidorAsignado: nombreRepartidor, estado: 'En camino' }
+          : p
       )
     );
   };
@@ -236,8 +226,8 @@ function App() {
 
       {pantallaActual === 'pedidos' && (
         <MisPedidos 
-          pedido={pedidoActivo} 
           pedidosVendedor={pedidosPorCumplir}
+          cambiarEstadoPedido={cambiarEstadoPedido}
           irAInicio={() => setPantallaActual('home')} 
           irAPerfil={() => setPantallaActual('perfil')} 
         />
@@ -248,13 +238,14 @@ function App() {
           usuario={usuarioActual}
           setUsuario={setUsuarioActual}
           registrarComoVendedor={registrarComoVendedor}
+          registrarComoRepartidor={registrarComoRepartidor}
           irAPanelVendedor={() => setPantallaActual('vendedor')}
+          irAPanelRepartidor={() => setPantallaActual('repartidor')}
           irAInicio={() => setPantallaActual('home')}
           irAPedidos={() => setPantallaActual('pedidos')}
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');
             setCarritoGlobal({});
-            setPedidoActivo(null);
             setPantallaActual('login');
           }}
         />
@@ -271,12 +262,27 @@ function App() {
           editarProducto={editarProducto}
           eliminarProducto={eliminarProducto}
           pedidosVendedor={pedidosPorCumplir}
-          cambiarEstadoPedidoVendedor={cambiarEstadoPedidoVendedor}
+          configurarAceptacionPedido={configurarAceptacionPedido}
+          cambiarEstadoPedidoVendedor={cambiarEstadoPedido}
           volverAModoCliente={() => setPantallaActual('home')}
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');
             setCarritoGlobal({});
-            setPedidoActivo(null);
+            setPantallaActual('login');
+          }}
+        />
+      )}
+
+      {pantallaActual === 'repartidor' && (
+        <PanelRepartidor
+          usuario={usuarioActual}
+          pedidos={pedidosPorCumplir}
+          tomarPedidoRepartidor={tomarPedidoRepartidor}
+          cambiarEstadoPedido={cambiarEstadoPedido}
+          volverAModoCliente={() => setPantallaActual('home')}
+          cerrarSesion={() => {
+            localStorage.removeItem('campy_token');
+            setCarritoGlobal({});
             setPantallaActual('login');
           }}
         />

@@ -12,11 +12,11 @@ const PanelVendedor = ({
   editarProducto,
   eliminarProducto,
   pedidosVendedor = [],
+  configurarAceptacionPedido,
   cambiarEstadoPedidoVendedor,
   volverAModoCliente,
   cerrarSesion
 }) => {
-  // 'perfil' (principal con productos) | 'pedidos' (pedidos por cumplir)
   const [tabActiva, setTabActiva] = useState('perfil');
   const [modalActivo, setModalActivo] = useState(null);
 
@@ -36,7 +36,15 @@ const PanelVendedor = ({
   const [matrizHorario, setMatrizHorario] = useState(usuario?.datosVendedor?.matrizHorario || {});
   const [notaHorario, setNotaHorario] = useState(usuario?.datosVendedor?.notaHorario || '');
 
-  // Estados para cancelar pedido con nota obligatoria
+  // Estados para el Panel de Aceptar / Declinar Pedido y elegir si necesita Repartidor
+  const [pedidoSeleccionado, setPedidoSeleccionado] = useState(null);
+  const [modoEntrega, setModoEntrega] = useState('propio'); // 'propio' | 'repartidor'
+  const [costoParaRepartidor, setCostoParaRepartidor] = useState('');
+  const [dondeRecogeRepartidor, setDondeRecogeRepartidor] = useState('');
+  const [dondeDejaRepartidor, setDondeDejaRepartidor] = useState('');
+  const [comisionRepartidor, setComisionRepartidor] = useState('10');
+
+  // Estados para cancelar/declinar pedido con nota obligatoria
   const [pedidoACancelar, setPedidoACancelar] = useState(null);
   const [notaCancelacion, setNotaCancelacion] = useState('');
   const [errorCancelacion, setErrorCancelacion] = useState('');
@@ -142,6 +150,35 @@ const PanelVendedor = ({
     setModalActivo(null);
   };
 
+  // Abrir panel cuando el vendedor da clic en un pedido para aceptarlo o declinarlo
+  const abrirPanelGestionPedido = (pedido) => {
+    setPedidoSeleccionado(pedido);
+    setModoEntrega(pedido.requiereRepartidor ? 'repartidor' : 'propio');
+    setCostoParaRepartidor(String(pedido.total || ''));
+    setDondeRecogeRepartidor(usuario?.datosVendedor?.ubicacion || 'Kiosco Central / Edificio L');
+    setDondeDejaRepartidor(pedido.puntoEntrega || 'Edificio L - Salón L3');
+    setComisionRepartidor('10');
+    setModalActivo('gestionarPedido');
+  };
+
+  const confirmarAceptacionPedido = async (e) => {
+    e.preventDefault();
+    if (!pedidoSeleccionado) return;
+
+    const necesitaRep = modoEntrega === 'repartidor';
+    await configurarAceptacionPedido(pedidoSeleccionado.id, {
+      estado: 'En preparación',
+      requiereRepartidor: necesitaRep,
+      costoProductoRepartidor: necesitaRep ? parseFloat(costoParaRepartidor || pedidoSeleccionado.total) : pedidoSeleccionado.total,
+      lugarRecoleccion: necesitaRep ? dondeRecogeRepartidor.trim() : '',
+      puntoEntrega: necesitaRep ? dondeDejaRepartidor.trim() : pedidoSeleccionado.puntoEntrega,
+      comisionRepartidor: necesitaRep ? parseFloat(comisionRepartidor || 10) : 0
+    });
+
+    setPedidoSeleccionado(null);
+    setModalActivo(null);
+  };
+
   const abrirModalCancelar = (pedido) => {
     setPedidoACancelar(pedido);
     setNotaCancelacion('');
@@ -152,7 +189,7 @@ const PanelVendedor = ({
   const confirmarCancelacion = async (e) => {
     e.preventDefault();
     if (!notaCancelacion.trim() || notaCancelacion.trim().length < 5) {
-      setErrorCancelacion('Es obligatorio escribir una nota clara explicando al comprador por qué cancelas su pedido.');
+      setErrorCancelacion('Es obligatorio escribir una nota clara explicando al comprador por qué cancelas o declinas su pedido.');
       return;
     }
 
@@ -162,7 +199,9 @@ const PanelVendedor = ({
     setModalActivo(null);
   };
 
-  const pedidosPendientesCount = pedidosVendedor.filter(p => p.estado !== 'Entregado' && p.estado !== 'Cancelado').length;
+  const pedidosPendientesCount = pedidosVendedor.filter(
+    (p) => p.estado !== 'Entregado' && p.estado !== 'Cancelado'
+  ).length;
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center font-sans">
@@ -195,10 +234,9 @@ const PanelVendedor = ({
         {/* CONTENIDO DINÁMICO SEGÚN PESTAÑA */}
         <div className="flex-1 overflow-y-auto pb-32 px-5 z-10 -mt-2 hide-scrollbar">
           
-          {/* ================= APARTADO 1: MI PERFIL (PRINCIPAL DE PRODUCTOS) ================= */}
+          {/* ================= APARTADO 1: MI PERFIL (LIMPIO SIN HORARIOS EN LA TARJETA) ================= */}
           {tabActiva === 'perfil' && (
             <>
-              {/* Tarjeta Resumen del Vendedor */}
               <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100 mb-5">
                 <div className="flex justify-between items-start gap-3">
                   <div className="flex gap-3 items-center">
@@ -239,13 +277,12 @@ const PanelVendedor = ({
                 </button>
               </div>
 
-              {/* Lista de Productos del Vendedor */}
               {misProductos.length === 0 ? (
                 <div className="bg-white rounded-3xl p-6 text-center border-2 border-dashed border-gray-200 mb-6">
                   <span className="text-4xl block mb-2">📦</span>
                   <p className="font-black text-sm text-gray-800">Aún no tienes productos en venta</p>
                   <p className="text-xs text-gray-400 mt-1 mb-4">
-                    Da de alta tus productos uno por uno con su foto, precio y descripción para que aparezcan en el catálogo estudiantil.
+                    Da de alta tus productos uno por uno con su foto, precio y descripción.
                   </p>
                   <button
                     onClick={abrirModalNuevoProducto}
@@ -305,7 +342,6 @@ const PanelVendedor = ({
                 </div>
               )}
 
-              {/* Acciones secundarias (explorar catálogo como comprador o cerrar sesión) */}
               <div className="flex flex-col gap-2.5 mt-4">
                 <button
                   onClick={volverAModoCliente}
@@ -323,7 +359,7 @@ const PanelVendedor = ({
             </>
           )}
 
-          {/* ================= APARTADO 2: PEDIDOS POR CUMPLIR ================= */}
+          {/* ================= APARTADO 2: PEDIDOS POR CUMPLIR Y GESTIÓN DE ESTADOS ================= */}
           {tabActiva === 'pedidos' && (
             <>
               <div className="mb-4">
@@ -331,7 +367,7 @@ const PanelVendedor = ({
                   Pedidos por Cumplir
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Revisa qué productos te pidieron, a qué compañero se los debes entregar o cancélalos enviando una nota.
+                  Toca un pedido nuevo para aceptarlo, elegir si lo llevas tú o un repartidor, y actualizar su estado.
                 </p>
               </div>
 
@@ -345,11 +381,15 @@ const PanelVendedor = ({
                   {pedidosVendedor.map((ped) => {
                     const estaCancelado = ped.estado === 'Cancelado';
                     const estaEntregado = ped.estado === 'Entregado';
+                    const esNuevoPendiente = ped.estado === 'Pendiente';
 
                     return (
                       <div
                         key={ped.id}
+                        onClick={() => esNuevoPendiente && abrirPanelGestionPedido(ped)}
                         className={`bg-white rounded-3xl p-4 shadow-sm border-2 transition-all ${
+                          esNuevoPendiente ? 'cursor-pointer hover:shadow-md border-[#FF8C00]' : ''
+                        } ${
                           estaCancelado
                             ? 'border-red-200 opacity-80'
                             : estaEntregado
@@ -365,10 +405,18 @@ const PanelVendedor = ({
                                 ? 'bg-red-100 text-red-600'
                                 : estaEntregado
                                 ? 'bg-green-100 text-green-700'
-                                : 'bg-[#FF8C00] text-white'
+                                : esNuevoPendiente
+                                ? 'bg-amber-500 text-white animate-pulse'
+                                : 'bg-[#0A3895] text-white'
                             }`}
                           >
-                            {estaCancelado ? '✕ Cancelado' : estaEntregado ? '✓ Entregado' : '⚡ Por entregar'}
+                            {estaCancelado
+                              ? '✕ Cancelado'
+                              : estaEntregado
+                              ? '✓ Entregado'
+                              : esNuevoPendiente
+                              ? '🔔 Nuevo • Toca para Aceptar'
+                              : `⚡ ${ped.estado}`}
                           </span>
                           <span className="text-[11px] font-bold text-gray-400">
                             Pedido #{ped.id} • {ped.hora}
@@ -378,12 +426,32 @@ const PanelVendedor = ({
                         {/* Datos de a quién le debemos el pedido */}
                         <div className="bg-[#F4F7FD] rounded-2xl p-3 mb-3 border border-blue-100">
                           <p className="text-[10px] font-black uppercase text-[#0A3895] mb-1">
-                            Entregar a (Comprador):
+                            Cliente Comprador:
                           </p>
                           <p className="text-sm font-black text-gray-900">👤 {ped.compradorNombre}</p>
                           <p className="text-xs text-gray-600 font-medium mt-0.5">🎓 {ped.compradorCarrera}</p>
-                          <p className="text-xs text-[#FF8C00] font-bold mt-1">📍 Punto acordado: {ped.puntoEntrega}</p>
+                          <p className="text-xs text-[#FF8C00] font-bold mt-1">📍 Entregar en: {ped.puntoEntrega}</p>
                         </div>
+
+                        {/* Info de modalidad de reparto si ya fue aceptado */}
+                        {!esNuevoPendiente && !estaCancelado && (
+                          <div className="mb-3 px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-[11px]">
+                            {ped.requiereRepartidor ? (
+                              <p className="text-gray-700">
+                                🛵 <span className="font-bold">Con Repartidor:</span>{' '}
+                                {ped.repartidorAsignado ? (
+                                  <span className="text-green-600 font-black">Asignado a {ped.repartidorAsignado}</span>
+                                ) : (
+                                  <span className="text-[#FF8C00] font-bold">Buscando repartidor disponible...</span>
+                                )}
+                              </p>
+                            ) : (
+                              <p className="text-gray-700">
+                                🚶‍♂️ <span className="font-bold">Entrega directa:</span> Tú llevarás este pedido al comprador.
+                              </p>
+                            )}
+                          </div>
+                        )}
 
                         {/* Lista de productos que pidió */}
                         <div className="mb-3">
@@ -405,7 +473,7 @@ const PanelVendedor = ({
                         </div>
 
                         <div className="flex justify-between items-center border-t border-gray-100 pt-2.5 mb-3">
-                          <span className="text-xs font-bold text-gray-400 uppercase">Total a cobrar ({ped.metodoPago})</span>
+                          <span className="text-xs font-bold text-gray-400 uppercase">Total ({ped.metodoPago})</span>
                           <span className="text-lg font-black text-[#FF8C00]">${Number(ped.total).toFixed(2)}</span>
                         </div>
 
@@ -417,21 +485,77 @@ const PanelVendedor = ({
                           </div>
                         )}
 
-                        {/* Botones de acción si sigue pendiente */}
-                        {!estaCancelado && !estaEntregado && (
-                          <div className="flex gap-2.5 mt-2">
+                        {/* Controles para pedido Nuevo Pendiente */}
+                        {esNuevoPendiente && (
+                          <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={() => abrirModalCancelar(ped)}
                               className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs py-3 rounded-xl transition-colors"
                             >
-                              Cancelar pedido
+                              Declinar
                             </button>
                             <button
-                              onClick={() => cambiarEstadoPedidoVendedor(ped.id, 'Entregado', '')}
-                              className="flex-1 bg-[#22C55E] hover:bg-[#16a34a] text-white font-black text-xs py-3 rounded-xl shadow-md transition-colors"
+                              onClick={() => abrirPanelGestionPedido(ped)}
+                              className="flex-2 bg-[#FF8C00] hover:bg-[#e67e00] text-white font-black text-xs py-3 px-4 rounded-xl shadow-md transition-colors"
                             >
-                              ✓ Marcar Entregado
+                              ✓ Aceptar / Configurar Entrega
                             </button>
+                          </div>
+                        )}
+
+                        {/* Botones de progreso de estados cuando ya fue aceptado */}
+                        {!esNuevoPendiente && !estaCancelado && !estaEntregado && (
+                          <div className="flex flex-col gap-2 pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+                            <p className="text-[10px] font-black uppercase text-gray-400">
+                              Actualizar estado del pedido al comprador:
+                            </p>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              <button
+                                onClick={() => cambiarEstadoPedidoVendedor(ped.id, 'En preparación', '')}
+                                className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${
+                                  ped.estado === 'En preparación'
+                                    ? 'bg-[#0A3895] text-white border-[#0A3895]'
+                                    : 'bg-gray-50 text-gray-700 border-gray-200'
+                                }`}
+                              >
+                                👨‍🍳 Preparando
+                              </button>
+                              <button
+                                onClick={() => cambiarEstadoPedidoVendedor(ped.id, 'En camino', '')}
+                                className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${
+                                  ped.estado === 'En camino'
+                                    ? 'bg-[#FF8C00] text-white border-[#FF8C00]'
+                                    : 'bg-gray-50 text-gray-700 border-gray-200'
+                                }`}
+                              >
+                                🏃‍♂️ En camino
+                              </button>
+                              <button
+                                onClick={() => cambiarEstadoPedidoVendedor(ped.id, 'En el punto de entrega', '')}
+                                className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${
+                                  ped.estado === 'En el punto de entrega'
+                                    ? 'bg-[#22C55E] text-white border-[#22C55E]'
+                                    : 'bg-gray-50 text-gray-700 border-gray-200'
+                                }`}
+                              >
+                                📍 En el lugar
+                              </button>
+                            </div>
+
+                            <div className="flex gap-2 mt-1">
+                              <button
+                                onClick={() => abrirModalCancelar(ped)}
+                                className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-xs py-2.5 rounded-xl"
+                              >
+                                Cancelar con nota
+                              </button>
+                              <button
+                                onClick={() => cambiarEstadoPedidoVendedor(ped.id, 'Entregado', '')}
+                                className="flex-1 bg-[#22C55E] hover:bg-[#16a34a] text-white font-black text-xs py-2.5 rounded-xl shadow-sm"
+                              >
+                                ✓ Marcar Entregado
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -492,6 +616,140 @@ const PanelVendedor = ({
         {/* FONDO DE MODALES */}
         {modalActivo && (
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-40" onClick={() => setModalActivo(null)}></div>
+        )}
+
+        {/* MODAL NUEVO: ACEPTAR / DECLINAR PEDIDO Y ELEGIR REPARTIDOR */}
+        {modalActivo === 'gestionarPedido' && pedidoSeleccionado && (
+          <div className="absolute bottom-0 left-0 w-full max-h-[92%] overflow-y-auto bg-white rounded-t-[30px] p-6 pb-10 z-50 animate-[slideUp_0.3s_ease-out]">
+            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-3"></div>
+            <div className="flex justify-between items-center mb-1">
+              <h2 className="text-lg font-black text-[#0A3895]">
+                Gestionar Pedido #{pedidoSeleccionado.id}
+              </h2>
+              <button onClick={() => setModalActivo(null)} className="text-xs font-bold text-gray-400">Cerrar ✕</button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              Solicitado por <span className="font-bold text-gray-800">{pedidoSeleccionado.compradorNombre}</span>. Confirma si aceptas el pedido y cómo lo entregarás.
+            </p>
+
+            <form onSubmit={confirmarAceptacionPedido} className="flex flex-col gap-3.5">
+              {/* Selector: ¿Lo llevas tú o necesitas Repartidor? */}
+              <div>
+                <label className="text-[11px] font-black text-gray-700 uppercase block mb-2">
+                  ¿Quién entregará el producto?
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setModoEntrega('propio')}
+                    className={`p-3 rounded-2xl border-2 text-left transition-all ${
+                      modoEntrega === 'propio'
+                        ? 'border-[#0A3895] bg-blue-50/60'
+                        : 'border-gray-200 bg-white'
+                    }`}
+                  >
+                    <span className="text-xl block mb-1">🚶‍♂️</span>
+                    <p className="font-black text-xs text-gray-900">Yo lo voy a dejar</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">Entrega personal al comprador</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setModoEntrega('repartidor')}
+                    className={`p-3 rounded-2xl border-2 text-left transition-all ${
+                      modoEntrega === 'repartidor'
+                        ? 'border-[#FF8C00] bg-orange-50/60'
+                        : 'border-gray-200 bg-white'
+                    }`}
+                  >
+                    <span className="text-xl block mb-1">🛵</span>
+                    <p className="font-black text-xs text-gray-900">Necesito Repartidor</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">Publicar en bolsa de repartidores</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Campos obligatorios si el vendedor necesita un repartidor */}
+              {modoEntrega === 'repartidor' && (
+                <div className="bg-orange-50/60 border border-orange-200 rounded-2xl p-3.5 flex flex-col gap-3">
+                  <p className="text-[10px] font-black uppercase text-[#FF8C00]">
+                    Datos para el Repartidor (Estilo Uber)
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-600 block mb-1">Costo del producto ($)</label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={costoParaRepartidor}
+                        onChange={(e) => setCostoParaRepartidor(e.target.value)}
+                        placeholder="Ej. 70"
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-800 outline-none focus:border-[#FF8C00]"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-600 block mb-1">Propina/Envío Repartidor ($)</label>
+                      <input
+                        type="number"
+                        step="1"
+                        value={comisionRepartidor}
+                        onChange={(e) => setComisionRepartidor(e.target.value)}
+                        placeholder="Ej. 10"
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-800 outline-none focus:border-[#FF8C00]"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-600 block mb-1">
+                      ¿Dónde lo pasa a recoger el repartidor?
+                    </label>
+                    <input
+                      type="text"
+                      value={dondeRecogeRepartidor}
+                      onChange={(e) => setDondeRecogeRepartidor(e.target.value)}
+                      placeholder="Ej. Kiosco Central / Mesas del Edificio D"
+                      className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#FF8C00]"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-600 block mb-1">
+                      ¿Dónde lo va a dejar al comprador?
+                    </label>
+                    <input
+                      type="text"
+                      value={dondeDejaRepartidor}
+                      onChange={(e) => setDondeDejaRepartidor(e.target.value)}
+                      placeholder="Ej. Edificio L - Salón L3"
+                      className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#FF8C00]"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2.5 mt-2">
+                <button
+                  type="button"
+                  onClick={() => abrirModalCancelar(pedidoSeleccionado)}
+                  className="flex-1 bg-red-50 text-red-600 border border-red-200 font-bold text-xs py-3.5 rounded-xl"
+                >
+                  Declinar Pedido
+                </button>
+                <button
+                  type="submit"
+                  className="flex-2 bg-[#22C55E] hover:bg-[#16a34a] text-white font-black text-xs py-3.5 px-5 rounded-xl shadow-md"
+                >
+                  ✓ Aceptar y Preparar Pedido
+                </button>
+              </div>
+            </form>
+          </div>
         )}
 
         {/* MODAL 1: CREAR / EDITAR PRODUCTO */}
@@ -609,9 +867,9 @@ const PanelVendedor = ({
         {modalActivo === 'cancelarPedido' && pedidoACancelar && (
           <div className="absolute bottom-0 left-0 w-full bg-white rounded-t-[30px] p-6 pb-10 z-50 animate-[slideUp_0.3s_ease-out]">
             <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-4"></div>
-            <h2 className="text-lg font-black text-red-600 mb-1">Cancelar Pedido #{pedidoACancelar.id}</h2>
+            <h2 className="text-lg font-black text-red-600 mb-1">Cancelar / Declinar Pedido #{pedidoACancelar.id}</h2>
             <p className="text-xs text-gray-500 mb-4">
-              Pedido de <span className="font-bold text-gray-800">{pedidoACancelar.compradorNombre}</span>. Escribe obligatoriamente el motivo de la cancelación para notificarle.
+              Pedido de <span className="font-bold text-gray-800">{pedidoACancelar.compradorNombre}</span>. Escribe obligatoriamente el motivo para notificarle.
             </p>
 
             <form onSubmit={confirmarCancelacion} className="flex flex-col gap-3">
@@ -626,7 +884,7 @@ const PanelVendedor = ({
                     setNotaCancelacion(e.target.value);
                     if (errorCancelacion) setErrorCancelacion('');
                   }}
-                  placeholder="Ej. Disculpa, se me terminaron las porciones de hoy / Tuve que entrar a examen en otro edificio..."
+                  placeholder="Ej. Disculpa, se me terminaron las porciones de hoy / Tuve que entrar a examen..."
                   className="w-full bg-gray-50 border-2 border-gray-200 rounded-2xl p-3 text-xs text-gray-800 outline-none focus:border-red-500"
                   required
                 />
@@ -695,7 +953,6 @@ const PanelVendedor = ({
                 </div>
               </div>
 
-              {/* Caja Organizadora de Horarios Compacta */}
               <div className="bg-[#F4F7FD] border border-blue-100 rounded-2xl p-3">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-[11px] font-black text-[#0A3895] uppercase">Organizador de Horarios</span>

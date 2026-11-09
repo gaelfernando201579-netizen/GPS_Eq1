@@ -1,48 +1,21 @@
 import React from 'react';
 import logoCampy from './assets/logo.png';
 
-const MisPedidos = ({ irAInicio, irAPerfil, pedido, pedidosVendedor = [] }) => {
-  const esListaValida = Array.isArray(pedido) && pedido.length > 0;
-  
-  const pedidosPorVendedor = {};
-  if (esListaValida) {
-    pedido.forEach(item => {
-      if (!pedidosPorVendedor[item.tienda]) {
-        pedidosPorVendedor[item.tienda] = {
-          tienda: item.tienda,
-          ubicacion: item.ubicacion,
-          items: [],
-          total: 0,
-          idPedido: 48201,
-          createdAt: new Date() // Marca de tiempo para evaluar el límite de cancelación
-        };
-      }
-      pedidosPorVendedor[item.tienda].items.push(item);
-      pedidosPorVendedor[item.tienda].total += (item.precio * item.cantidad);
-    });
-  }
+const ETAPAS = [
+  { clave: 'En preparación', etiqueta: 'Preparando', icono: '👨‍🍳' },
+  { clave: 'En camino', etiqueta: 'En Camino', icono: '🛵' },
+  { clave: 'En el punto de entrega', etiqueta: 'En el Lugar', icono: '📍' },
+  { clave: 'Entregado', etiqueta: 'Entregado', icono: '✓' }
+];
 
-  const listaDeEntregas = Object.values(pedidosPorVendedor);
-  const pedidosCanceladosConNota = pedidosVendedor.filter(p => p.estado === 'Cancelado' && p.notaCancelacion);
-
-  // Lógica de validación de cancelación (ej. Límite de 10 minutos y revisión de política del producto)
-  const validarCancelacion = (entrega) => {
-    const TIEMPO_LIMITE_MINUTOS = 10;
-    const ahora = new Date();
-    const minutosTranscurridos = (ahora - new Date(entrega.createdAt)) / (1000 * 60);
-
-    // Revisar si algún producto de la orden tiene prohibida la cancelación (allow_cancellation === false)
-    const tieneProductoSinCancelacion = entrega.items.some(item => item.allow_cancellation === false);
-
-    if (tieneProductoSinCancelacion) {
-      return { puede: false, motivo: 'Este pedido incluye productos de venta final que no aceptan cancelación.' };
-    }
-
-    if (minutosTranscurridos > TIEMPO_LIMITE_MINUTOS) {
-      return { puede: false, motivo: `El tiempo límite para cancelar ha expirado (máximo ${TIEMPO_LIMITE_MINUTOS} minutos).` };
-    }
-
-    return { puede: true, motivo: '' };
+const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cambiarEstadoPedido }) => {
+  const obtenerIndiceEtapa = (estado) => {
+    if (estado === 'Pendiente') return -1;
+    if (estado === 'En preparación' || estado === 'Aceptado') return 0;
+    if (estado === 'En camino') return 1;
+    if (estado === 'En el punto de entrega') return 2;
+    if (estado === 'Entregado') return 3;
+    return 0;
   };
 
   return (
@@ -59,48 +32,77 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedido, pedidosVendedor = [] }) => {
         <div className="flex-1 overflow-y-auto pb-24 px-5 pt-4 hide-scrollbar">
           <h2 className="font-black text-xl mb-4 text-gray-900 tracking-wide uppercase">Mis Pedidos</h2>
 
-          {/* Avisos de pedidos cancelados con la nota del vendedor */}
-          {pedidosCanceladosConNota.map((canc) => (
-            <div key={canc.id} className="border-2 border-red-300 bg-red-50/60 rounded-3xl p-4 mb-5">
-              <div className="flex justify-between items-center mb-2">
-                <span className="bg-red-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase">
-                  ✕ Pedido Cancelado
-                </span>
-                <span className="text-gray-500 text-[10px] font-bold">Pedido #{canc.id}</span>
-              </div>
-              <p className="text-xs font-bold text-gray-800 mt-1">
-                El vendedor canceló este pedido y te dejó la siguiente nota:
-              </p>
-              <div className="bg-white border border-red-200 rounded-2xl p-3 mt-2 text-xs text-red-700 italic">
-                "{canc.notaCancelacion}"
-              </div>
-            </div>
-          ))}
-
-          {!esListaValida && pedidosCanceladosConNota.length === 0 && (
+          {pedidosVendedor.length === 0 && (
             <div className="text-center bg-gray-50 p-6 rounded-3xl border border-gray-100">
               <span className="text-4xl mb-2 block">🛒</span>
-              <p className="text-gray-500 font-bold">Tu carrito está vacío</p>
+              <p className="text-gray-500 font-bold">Aún no tienes pedidos activos</p>
               <p className="text-gray-400 text-xs mt-1">Ve al inicio para agregar productos.</p>
             </div>
           )}
 
-          {listaDeEntregas.map((entrega, index) => {
-            const estadoCancelacion = validarCancelacion(entrega);
+          {pedidosVendedor.map((entrega) => {
+            const indiceActual = obtenerIndiceEtapa(entrega.estado);
+            const estaCancelado = entrega.estado === 'Cancelado';
+            const estaEnElPunto = entrega.estado === 'En el punto de entrega';
+            const estaEntregado = entrega.estado === 'Entregado';
 
             return (
-              <div key={index} className="border-2 border-[#FF8C00] rounded-3xl p-4 shadow-sm relative mb-6 bg-white">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="bg-[#FF8C00] text-white text-[10px] font-black px-3 py-1 rounded-full uppercase flex items-center gap-1">
-                    <span>⚡</span> Pedido en camino
+              <div
+                key={entrega.id}
+                className={`border-2 rounded-3xl p-4 shadow-sm relative mb-6 bg-white ${
+                  estaCancelado
+                    ? 'border-red-300 bg-red-50/30'
+                    : estaEnElPunto
+                    ? 'border-[#22C55E]'
+                    : 'border-[#FF8C00]'
+                }`}
+              >
+                {/* Cabecera del estado */}
+                <div className="flex justify-between items-center mb-3">
+                  <span
+                    className={`text-white text-[10px] font-black px-3 py-1 rounded-full uppercase flex items-center gap-1 ${
+                      estaCancelado
+                        ? 'bg-red-600'
+                        : estaEnElPunto || estaEntregado
+                        ? 'bg-[#22C55E]'
+                        : entrega.estado === 'Pendiente'
+                        ? 'bg-amber-500'
+                        : 'bg-[#FF8C00]'
+                    }`}
+                  >
+                    <span>{estaCancelado ? '✕' : estaEnElPunto ? '📍' : '⚡'}</span>
+                    {entrega.estado === 'Pendiente'
+                      ? 'Esperando confirmación del vendedor'
+                      : entrega.estado}
                   </span>
-                  <span className="text-gray-400 text-[10px] font-bold">Pedido #{entrega.idPedido}</span>
+                  <span className="text-gray-400 text-[10px] font-bold">Pedido #{entrega.id}</span>
                 </div>
 
-                <div className="flex flex-col gap-3 mb-4">
+                {/* Alerta destacada cuando ya llegaron al punto de encuentro */}
+                {estaEnElPunto && (
+                  <div className="bg-green-50 border-2 border-[#22C55E] rounded-2xl p-3 mb-3 animate-pulse">
+                    <p className="text-xs font-black text-green-800">
+                      📍 ¡Tu pedido ya está en la dirección señalizada!
+                    </p>
+                    <p className="text-[11px] text-green-700 mt-0.5">
+                      Acércate a <span className="font-bold">{entrega.puntoEntrega}</span> para recibir tus productos.
+                    </p>
+                  </div>
+                )}
+
+                {/* Nota si fue cancelado */}
+                {estaCancelado && (
+                  <div className="bg-white border border-red-200 rounded-2xl p-3 mb-3 text-xs text-red-700">
+                    <p className="font-black uppercase text-[10px] mb-0.5">Motivo de cancelación del vendedor:</p>
+                    <p className="italic">"{entrega.notaCancelacion || 'Pedido cancelado'}"</p>
+                  </div>
+                )}
+
+                {/* Productos del pedido */}
+                <div className="flex flex-col gap-2.5 mb-3">
                   {entrega.items.map((item, idx) => (
-                    <div key={idx} className="flex gap-4 items-center bg-gray-50 p-2 rounded-2xl border border-gray-100">
-                      <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-gray-400 text-[10px] font-bold shrink-0 border border-gray-200 overflow-hidden">
+                    <div key={idx} className="flex gap-3 items-center bg-gray-50 p-2 rounded-2xl border border-gray-100">
+                      <div className="w-11 h-11 bg-white rounded-xl flex items-center justify-center text-gray-400 text-[10px] font-bold shrink-0 border border-gray-200 overflow-hidden">
                         {item.imagen ? (
                           <img src={item.imagen} alt={item.nombre} className="w-full h-full object-cover" />
                         ) : (
@@ -108,62 +110,97 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedido, pedidosVendedor = [] }) => {
                         )}
                       </div>
                       <div className="flex-1">
-                        <h3 className="font-black text-sm text-gray-800 leading-tight">
+                        <h3 className="font-black text-xs text-gray-800 leading-tight">
                           <span className="text-[#FF8C00]">{item.cantidad}x</span> {item.nombre}
                         </h3>
-                        <p className="text-gray-400 text-[9px] mt-0.5">{entrega.tienda}</p>
-                        {item.allow_cancellation === false && (
-                          <span className="text-[9px] text-red-500 font-bold block">No acepta cancelación</span>
-                        )}
+                        <p className="text-gray-400 text-[10px] mt-0.5">{entrega.tienda || 'Vendedor ITO'}</p>
                       </div>
-                      <span className="text-gray-800 font-black text-sm px-2">${(item.precio * item.cantidad).toFixed(2)}</span>
+                      <span className="text-gray-800 font-black text-xs px-2">
+                        ${(item.precio * item.cantidad).toFixed(2)}
+                      </span>
                     </div>
                   ))}
                 </div>
 
-                <div className="border-t border-gray-100 my-3 pt-3 flex justify-between items-center px-1">
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">Total ({entrega.tienda})</span>
-                  <span className="text-[#FF8C00] font-black text-xl">${entrega.total.toFixed(2)}</span>
+                <div className="border-t border-gray-100 my-2.5 pt-2.5 flex justify-between items-center px-1">
+                  <span className="text-xs font-bold text-gray-400 uppercase">Total del Pedido</span>
+                  <span className="text-[#FF8C00] font-black text-lg">${Number(entrega.total).toFixed(2)}</span>
                 </div>
 
-                <div className="bg-gray-50 rounded-2xl p-3 flex gap-3 items-center mb-4 border border-gray-100 mt-2">
-                  <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-black text-lg shrink-0">C</div>
-                  <div className="flex-1">
-                    <h4 className="font-black text-xs text-gray-800">¡Ya casi llega!</h4>
-                    <p className="text-gray-500 text-[10px] leading-tight mt-0.5">
-                      Tu vendedor viene desde <span className="text-[#FF8C00] font-bold">{entrega.ubicacion}</span>.
+                {/* Información de entrega y repartidor */}
+                {!estaCancelado && (
+                  <div className="bg-[#F4F7FD] rounded-2xl p-3 mb-4 border border-blue-100 text-[11px] text-gray-700">
+                    <p>
+                      📍 <span className="font-bold">Punto de entrega acordado:</span>{' '}
+                      <span className="font-black text-[#0A3895]">{entrega.puntoEntrega}</span>
+                    </p>
+                    <p className="mt-1">
+                      {entrega.requiereRepartidor ? (
+                        <>
+                          🛵 <span className="font-bold">Repartidor:</span>{' '}
+                          {entrega.repartidorAsignado || 'Asignando repartidor del campus...'}
+                        </>
+                      ) : (
+                        <>
+                          🚶‍♂️ <span className="font-bold">Modalidad:</span> El vendedor te entregará personalmente
+                        </>
+                      )}
                     </p>
                   </div>
-                  <div className="bg-white border border-[#FF8C00] text-[#FF8C00] flex flex-col items-center justify-center px-2 py-1 rounded-lg shrink-0 shadow-sm">
-                    <span className="text-[8px] font-black uppercase">Llega en</span>
-                    <span className="text-sm font-black">5 min</span>
+                )}
+
+                {/* Barra de progreso de estados para el comprador */}
+                {!estaCancelado && (
+                  <div className="flex justify-between items-center relative mb-5 px-2 mt-2">
+                    <div className="absolute top-3 left-6 right-6 h-1 bg-gray-200 z-0"></div>
+                    <div
+                      className="absolute top-3 left-6 h-1 bg-[#FF8C00] z-0 transition-all duration-300"
+                      style={{
+                        width:
+                          indiceActual <= 0
+                            ? '0%'
+                            : indiceActual === 1
+                            ? '33%'
+                            : indiceActual === 2
+                            ? '66%'
+                            : '88%'
+                      }}
+                    ></div>
+
+                    {ETAPAS.map((etapa, i) => {
+                      const completada = i <= indiceActual;
+                      return (
+                        <div key={etapa.clave} className="flex flex-col items-center z-10 gap-1 w-14">
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border-2 transition-all ${
+                              completada
+                                ? 'bg-[#FF8C00] text-white border-[#FF8C00] shadow-sm'
+                                : 'bg-white text-gray-300 border-gray-200'
+                            }`}
+                          >
+                            {etapa.icono}
+                          </div>
+                          <span
+                            className={`text-[8px] font-black uppercase text-center leading-tight ${
+                              completada ? 'text-gray-800' : 'text-gray-400'
+                            }`}
+                          >
+                            {etapa.etiqueta}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
+                )}
 
-                {/* Validación visual de cancelación con tiempo límite y restricciones */}
-                <div className="mb-4">
-                  {estadoCancelacion.puede ? (
-                    <button 
-                      onClick={() => alert('Solicitud de cancelación enviada al vendedor.')}
-                      className="w-full bg-red-50 text-red-600 border border-red-200 font-bold text-xs py-2.5 rounded-xl hover:bg-red-100 transition-colors"
-                    >
-                      Cancelar pedido (Límite 10 min)
-                    </button>
-                  ) : (
-                    <p className="text-[11px] text-red-500 bg-red-50 p-2 rounded-xl text-center font-medium border border-red-100">
-                      ⚠️ No disponible: {estadoCancelacion.motivo}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex gap-3">
-                  <button className="flex-1 bg-white border-2 border-gray-200 text-gray-600 font-bold text-sm py-3 rounded-xl flex justify-center items-center gap-2 hover:bg-gray-50 transition-colors">
-                    <span>💬</span> Contactar
+                {!estaCancelado && !estaEntregado && (
+                  <button
+                    onClick={() => cambiarEstadoPedido && cambiarEstadoPedido(entrega.id, 'Entregado')}
+                    className="w-full bg-[#FF8C00] hover:bg-[#e67e00] text-white font-black text-xs py-3 rounded-xl shadow-md transition-colors"
+                  >
+                    Confirmar que ya recibí mi pedido
                   </button>
-                  <button className="flex-1 bg-[#FF8C00] text-white font-bold text-sm py-3 rounded-xl shadow-lg hover:bg-[#e67e00] transition-colors">
-                    Recibí mi pedido
-                  </button>
-                </div>
+                )}
               </div>
             );
           })}
