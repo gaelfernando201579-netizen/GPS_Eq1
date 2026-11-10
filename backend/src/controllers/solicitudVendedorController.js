@@ -192,3 +192,88 @@ export async function revisarSolicitud(req, res) {
     if (client) client.release();
   }
 }
+
+
+export async function listarVendedoresActivos(req, res) {
+  const moderadorId = idSesion(req);
+  if (!moderadorId) return res.status(401).json({ mensaje: 'Inicia sesión.' });
+  try {
+    if (!(await tieneRol(pool, moderadorId, 'moderador'))) {
+      return res.status(403).json({ mensaje: 'Solo un moderador puede consultar vendedores.' });
+    }
+    const resultado = await pool.query(
+      `SELECT u.id_usuario, u.nombre, u.correo,
+              COUNT(DISTINCT p.id_producto)::integer AS total_productos
+       FROM public.usuarios u
+       JOIN public.usuario_roles ur ON ur.id_usuario = u.id_usuario
+       JOIN public.roles r ON r.id_rol = ur.id_rol
+       LEFT JOIN public.productos p ON p.id_vendedor = u.id_usuario
+       WHERE LOWER(TRIM(r.nombre)) = 'vendedor'
+         AND LOWER(TRIM(u.estado)) = 'activo'
+       GROUP BY u.id_usuario, u.nombre, u.correo
+       ORDER BY u.nombre, u.id_usuario`
+    );
+    return res.json(resultado.rows);
+  } catch (error) { return errorSolicitud(res, error, 'Error consultando vendedores activos:'); }
+}
+
+export async function quitarRolVendedor(req, res) {
+  const moderadorId = idSesion(req);
+  if (!moderadorId) return res.status(401).json({ mensaje: 'Inicia sesión.' });
+  const vendedorId = Number(req.params.id);
+  if (!Number.isSafeInteger(vendedorId) || vendedorId <= 0) {
+    return res.status(400).json({ mensaje: 'Identificador de vendedor inválido.' });
+  }
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    if (!(await tieneRol(client, moderadorId, 'moderador'))) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ mensaje: 'Solo un moderador puede quitar vendedores.' });
+    }
+    const usuario = await client.query(
+      `SELECT id_usuario, nombre FROM public.usuarios WHERE id_usuario = $1 FOR UPDATE`,
+      [vendedorId]
+    );
+    if (!usuario.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ mensaje: 'El usuario no existe.' });
+    }
+
+    const quitados = await client.query(
+      `DELETE FROM public.usuario_roles ur
+       USING public.roles r
+       WHERE ur.id_rol = r.id_rol AND ur.id_usuario = $1
+         AND LOWER(TRIM(r.nombre)) = 'vendedor'
+       RETURNING ur.id_usuario`,
+      [vendedorId]
+    );
+    if (!quitados.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ mensaje: 'Esta cuenta ya no tiene el rol Vendedor. Actualiza la lista.' });
+    }
+
+    // Si fue aprobado mediante solicitud, indicar que el permiso se retiró.
+    await client.query(
+      `UPDATE public.solicitudes_vendedor
+       SET estado = 'Rechazada',
+           comentario_revision = 'La autorización de vendedor fue retirada por moderación.',
+           id_moderador = $2, fecha_revision = NOW()
+       WHERE id_usuario = $1 AND estado = 'Aprobada'`,
+      [vendedorId, moderadorId]
+    );
+
+    await client.query('COMMIT');
+    return res.json({
+      mensaje: `Se retiró el rol Vendedor a ${usuario.rows[0].nombre}. La cuenta, los productos y los pedidos se conservan.`,
+      id_usuario: vendedorId
+    });
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    return errorSolicitud(res, error, 'Error retirando rol de vendedor:');
+  } finally {
+    if (client) client.release();
+  }
+}

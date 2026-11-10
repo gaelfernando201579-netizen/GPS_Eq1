@@ -11,6 +11,11 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
   const [comentarios, setComentarios] = useState({});
   const [error, setError] = useState('');
   const [aviso, setAviso] = useState('');
+  const [vendedores, setVendedores] = useState([]);
+  const [cargandoVendedores, setCargandoVendedores] = useState(true);
+  const [errorVendedores, setErrorVendedores] = useState('');
+  const [vendedorPorQuitar, setVendedorPorQuitar] = useState(null);
+  const [quitandoVendedor, setQuitandoVendedor] = useState(false);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -29,7 +34,46 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
     }
   }, [token]);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  const cargarVendedores = useCallback(async () => {
+    setCargandoVendedores(true);
+    setErrorVendedores('');
+    try {
+      const respuesta = await fetch(`${API_URL}/api/solicitudes-vendedor/vendedores-activos`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const datos = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok) throw new Error(datos.mensaje || 'No fue posible cargar los vendedores activos.');
+      setVendedores(Array.isArray(datos) ? datos : []);
+    } catch (e) {
+      setErrorVendedores(e.message);
+    } finally {
+      setCargandoVendedores(false);
+    }
+  }, [token]);
+
+  useEffect(() => { cargar(); cargarVendedores(); }, [cargar, cargarVendedores]);
+
+  const quitarVendedor = async () => {
+    if (!vendedorPorQuitar || quitandoVendedor) return;
+    setQuitandoVendedor(true);
+    setErrorVendedores('');
+    setAviso('');
+    try {
+      const respuesta = await fetch(`${API_URL}/api/solicitudes-vendedor/vendedores/${vendedorPorQuitar.id_usuario}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const datos = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo quitar el rol Vendedor.');
+      setVendedores((actuales) => actuales.filter((v) => v.id_usuario !== vendedorPorQuitar.id_usuario));
+      setVendedorPorQuitar(null);
+      setAviso(datos.mensaje || 'Se retiró el rol Vendedor.');
+    } catch (e) {
+      setErrorVendedores(e.message);
+    } finally {
+      setQuitandoVendedor(false);
+    }
+  };
 
   const revisar = async (id, decision) => {
     setError('');
@@ -45,6 +89,7 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
       if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo revisar la solicitud.');
       setSolicitudes((actual) => actual.filter((s) => s.id_solicitud !== id));
       setAviso(datos.mensaje);
+      if (decision === 'Aprobada') cargarVendedores();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -120,7 +165,7 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
             <>
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-black text-[#0A3895] text-sm">Pendientes ({solicitudes.length})</h3>
-                <button type="button" onClick={cargar} className="text-xs font-bold text-[#0A3895] bg-blue-50 rounded-xl px-3 py-2">Actualizar</button>
+                <button type="button" onClick={() => { cargar(); cargarVendedores(); }} className="text-xs font-bold text-[#0A3895] bg-blue-50 rounded-xl px-3 py-2">Actualizar</button>
               </div>
               {error && <p role="alert" className="text-red-700 bg-red-50 border border-red-200 p-3 rounded-xl text-sm mb-4">{error}</p>}
               {aviso && <p role="status" className="text-green-800 bg-green-50 border border-green-200 p-3 rounded-xl text-sm mb-4">{aviso}</p>}
@@ -159,6 +204,32 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
                   </div>
                 </div>
               ))}
+
+              <section className="mt-8 border-t border-gray-200 pt-6" aria-label="Vendedores activos">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <h3 className="font-black text-[#0A3895] text-sm">Vendedores activos ({vendedores.length})</h3>
+                  <button type="button" onClick={cargarVendedores}
+                    className="text-xs font-bold text-[#0A3895] bg-blue-50 rounded-xl px-3 py-2">Actualizar</button>
+                </div>
+                {errorVendedores && <p role="alert" className="text-red-700 bg-red-50 border border-red-200 p-3 rounded-xl text-sm mb-4">{errorVendedores}</p>}
+                {cargandoVendedores ? (
+                  <p className="text-gray-600 text-center py-7">Cargando vendedores...</p>
+                ) : vendedores.length === 0 ? (
+                  <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-7 text-center text-gray-500">
+                    No hay vendedores activos.
+                  </div>
+                ) : vendedores.map((vendedor) => (
+                  <div key={vendedor.id_usuario} className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 mb-4">
+                    <h4 className="font-black text-gray-900 text-base">{vendedor.nombre}</h4>
+                    <p className="text-xs text-gray-500 break-all mt-1">{vendedor.correo}</p>
+                    <p className="text-sm text-gray-600 mt-2">Productos registrados: {vendedor.total_productos}</p>
+                    <button type="button" onClick={() => setVendedorPorQuitar(vendedor)}
+                      className="mt-4 w-full bg-red-50 text-red-700 border border-red-100 rounded-xl py-3 font-black text-sm">
+                      Quitar vendedor
+                    </button>
+                  </div>
+                ))}
+              </section>
             </>
           )}
 
@@ -185,6 +256,34 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
             </div>
           )}
         </div>
+
+        {vendedorPorQuitar && (
+          <div className="absolute inset-0 z-50 bg-black/60 flex items-center justify-center p-5">
+            <div role="alertdialog" aria-modal="true" aria-labelledby="titulo-quitar-vendedor"
+              aria-describedby="descripcion-quitar-vendedor"
+              className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl">
+              <h3 id="titulo-quitar-vendedor" className="text-xl font-black text-gray-900">¿Quitar vendedor?</h3>
+              <p id="descripcion-quitar-vendedor" className="text-sm text-gray-700 mt-3">
+                ¿Seguro que quieres retirar el rol de Vendedor a <strong>{vendedorPorQuitar.nombre}</strong>?
+              </p>
+              <p className="text-xs text-gray-600 mt-3">
+                Su cuenta, sus {vendedorPorQuitar.total_productos} productos y sus pedidos no se eliminarán.
+                Los productos podrían seguir visibles en el catálogo.
+              </p>
+              {errorVendedores && <p role="alert" className="text-red-700 text-xs mt-3">{errorVendedores}</p>}
+              <div className="grid grid-cols-2 gap-3 mt-6">
+                <button type="button" disabled={quitandoVendedor} onClick={() => { setVendedorPorQuitar(null); setErrorVendedores(''); }}
+                  className="py-3 rounded-xl bg-gray-100 text-gray-800 font-black disabled:opacity-50">
+                  Cancelar
+                </button>
+                <button type="button" disabled={quitandoVendedor} onClick={quitarVendedor}
+                  className="py-3 rounded-xl bg-red-600 text-white font-black disabled:opacity-50">
+                  {quitandoVendedor ? 'Procesando...' : 'Sí, quitar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <nav aria-label="Menú del moderador" className="absolute bottom-0 inset-x-0 bg-white rounded-t-[28px] border-t border-gray-100 shadow-lg p-4 flex justify-center gap-2">
           <button type="button" aria-current={pestana === 'comprador' ? 'page' : undefined} onClick={() => setPestana('comprador')}
