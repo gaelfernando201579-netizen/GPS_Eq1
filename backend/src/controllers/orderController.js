@@ -1,126 +1,224 @@
-// controllers/orderController.js
 import { pool } from '../config/db.js';
 
-export async function crearPedido(req, res) {
-  const { items } = req.body; 
-  if (!items || items.length === 0) {
-    return res.status(400).json({ mensaje: 'El carrito está vacío' });
+const NUM_MAX_PRODUCTOS = 50;
+const CANTIDAD_MAX = 100;
+
+function errorCliente(mensaje, status = 400) {
+  const error = new Error(mensaje);
+  error.status = status;
+  return error;
+}
+
+function normalizarItems(items) {
+  if (!Array.isArray(items) || items.length === 0 || items.length > NUM_MAX_PRODUCTOS) {
+    throw errorCliente('Agrega entre 1 y 50 productos al carrito.');
   }
+  const cantidades = new Map();
+  for (const item of items) {
+    const id = Number(item.id_producto ?? item.id);
+    const cantidad = Number(item.cantidad);
+    if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(cantidad) || cantidad < 1 || cantidad > CANTIDAD_MAX) {
+      throw errorCliente('Los productos y las cantidades deben ser válidos.');
+    }
+    const nuevaCantidad = (cantidades.get(id) || 0) + cantidad;
+    if (nuevaCantidad > CANTIDAD_MAX) throw errorCliente('Cantidad máxima por producto: 100.');
+    cantidades.set(id, nuevaCantidad);
+  }
+  return cantidades;
+}
 
-  const client = await pool.connect();
+export async function crearPedido(req, res) {
+  let client;
   try {
+    if (!Number.isSafeInteger(Number(req.usuario?.id)) || Number(req.usuario.id) <= 0) {
+      throw errorCliente('Debes iniciar sesión para comprar.', 401);
+    }
+    const cantidades = normalizarItems(req.body?.items);
+    const puntoEntrega = req.body?.puntoEntrega?.trim();
+    const horarioEntrega = req.body?.horarioEntrega;
+    const fechaEntrega = new Date(horarioEntrega);
+    if (typeof puntoEntrega !== 'string' || puntoEntrega.length < 5 || puntoEntrega.length > 200) {
+      throw errorCliente('Especifica un punto de entrega de al menos 5 caracteres.');
+    }
+    if (typeof horarioEntrega !== 'string' || !Number.isFinite(fechaEntrega.getTime()) ||
+      fechaEntrega.getTime() <= Date.now() || fechaEntrega.getTime() > Date.now() + 30 * 86400000) {
+      throw errorCliente('Selecciona una fecha de entrega futura dentro de los próximos 30 días.');
+    }
+
+    client = await pool.connect();
     await client.query('BEGIN');
-    const total = items.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
-
-    const resultPedido = await client.query(
-      'INSERT INTO pedidos (comprador_id, total, estado) VALUES ($1, $2, $3) RETURNING id',
-      [req.usuario.id, total, 'En Camino']
+    const compradorId = Number(req.usuario.id);
+    const comprador = await client.query(
+      `SELECT id_usuario FROM public.usuarios WHERE id_usuario = $1 AND LOWER(estado) = 'activo'`,
+      [compradorId]
     );
+    if (!comprador.rowCount) throw errorCliente('Tu cuenta no está activa.', 403);
 
-    const pedidoId = resultPedido.rows[0].id;
+    const resultados = await client.query(
+      `SELECT id_producto, id_vendedor, nombre, precio, cantidad_disponible, estado
+       FROM public.productos WHERE id_producto = ANY($1::integer[])
+       ORDER BY id_producto FOR UPDATE`,
+      [[...cantidades.keys()]]
+    );
+    if (resultados.rowCount !== cantidades.size) {
+      throw errorCliente('Uno de los productos ya no está disponible.', 409);
+    }
 
-    for (const item of items) {
-      await client.query(
-        'INSERT INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario) VALUES ($1, $2, $3, $4)',
-        [pedidoId, item.id, item.cantidad, item.precio]
+    const porVendedor = new Map();
+    for (const producto of resultados.rows) {
+      const cantidad = cantidades.get(producto.id_producto);
+      if (['inactivo', 'rechazado', 'eliminado', 'bloqueado', 'pendiente'].includes(String(producto.estado).toLowerCase())) {
+        throw errorCliente(`El producto "${producto.nombre}" no está disponible.`, 409);
+      }
+      if (Number(producto.cantidad_disponible) < cantidad) {
+        throw errorCliente(`No hay suficientes existencias de "${producto.nombre}".`, 409);
+      }
+      if (!Number.isFinite(Number(producto.precio)) || Number(producto.precio) < 0) {
+        throw errorCliente(`Precio inválido para "${producto.nombre}".`, 409);
+      }
+      if (Number(producto.id_vendedor) === compradorId) {
+        throw errorCliente('No puedes comprarte productos a ti mismo.', 400);
+      }
+      const idVendedor = Number(producto.id_vendedor);
+      if (!porVendedor.has(idVendedor)) porVendedor.set(idVendedor, []);
+      porVendedor.get(idVendedor).push({ ...producto, cantidad });
+    }
+
+    const idsPedidos = [];
+    for (const [idVendedor, productos] of porVendedor) {
+      const subtotalCentavos = productos.reduce(
+        (suma, producto) => suma + Math.round(Number(producto.precio) * 100) * producto.cantidad, 0
       );
+      const subtotal = (subtotalCentavos / 100).toFixed(2);
+      const creado = await client.query(
+        `INSERT INTO public.pedidos
+           (id_comprador, id_vendedor, subtotal, total, punto_entrega_acordado,
+            horario_entrega_acordado, estado, fecha_pedido)
+         VALUES ($1, $2, $3, $3, $4, $5, 'Pendiente', CURRENT_TIMESTAMP)
+         RETURNING id_pedido`,
+        [compradorId, idVendedor, subtotal, puntoEntrega, fechaEntrega.toISOString()]
+      );
+      const idPedido = creado.rows[0].id_pedido;
+      for (const producto of productos) {
+        const precio = Number(producto.precio).toFixed(2);
+        const subtotalDetalle = (Math.round(Number(producto.precio) * 100) * producto.cantidad / 100).toFixed(2);
+        await client.query(
+          `INSERT INTO public.detalle_pedido
+             (id_pedido, id_producto, cantidad, precio_unitario, subtotal)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [idPedido, producto.id_producto, producto.cantidad, precio, subtotalDetalle]
+        );
+      }
+      idsPedidos.push(idPedido);
     }
 
     await client.query('COMMIT');
-    res.status(201).json({ mensaje: 'Pedido registrado correctamente', pedidoId, total });
+    return res.status(201).json({
+      mensaje: idsPedidos.length === 1 ? 'Pedido registrado en Supabase.' : 'Pedidos registrados en Supabase.',
+      idsPedidos,
+      totalPedidos: idsPedidos.length
+    });
   } catch (error) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ mensaje: 'Error al procesar pedido', error: error.message });
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    if (!error.status) console.error('Error guardando pedido:', error);
+    return res.status(error.status || 500).json({
+      mensaje: error.status ? error.message : 'No se pudo guardar el pedido en Supabase.'
+    });
   } finally {
-    client.release();
+    if (client) client.release();
+  }
+}
+
+async function consultarPedidos(req, res, campo) {
+  try {
+    if (!Number.isSafeInteger(Number(req.usuario?.id)) || Number(req.usuario.id) <= 0) {
+      return res.status(401).json({ mensaje: 'Inicia sesión para ver tus pedidos.' });
+    }
+    // Solo se interpolan nombres de columnas constantes definidos por el servidor.
+    const resultado = await pool.query(
+      `SELECT p.id_pedido, p.estado, p.total, p.subtotal, p.fecha_pedido,
+              p.punto_entrega_acordado, p.horario_entrega_acordado,
+              c.nombre AS comprador_nombre, v.nombre AS vendedor_nombre,
+              d.id_producto, d.cantidad, d.precio_unitario,
+              pr.nombre AS producto_nombre, pr.imagen_url
+       FROM public.pedidos p
+       JOIN public.usuarios c ON c.id_usuario = p.id_comprador
+       JOIN public.usuarios v ON v.id_usuario = p.id_vendedor
+       LEFT JOIN public.detalle_pedido d ON d.id_pedido = p.id_pedido
+       LEFT JOIN public.productos pr ON pr.id_producto = d.id_producto
+       WHERE p.${campo} = $1
+       ORDER BY p.fecha_pedido DESC, p.id_pedido DESC, d.id_producto`,
+      [Number(req.usuario.id)]
+    );
+    const mapa = new Map();
+    for (const fila of resultado.rows) {
+      if (!mapa.has(fila.id_pedido)) {
+        mapa.set(fila.id_pedido, {
+          id: fila.id_pedido,
+          compradorNombre: fila.comprador_nombre,
+          compradorCarrera: '',
+          tienda: `Vende: ${fila.vendedor_nombre}`,
+          estado: fila.estado,
+          total: Number(fila.total),
+          puntoEntrega: fila.punto_entrega_acordado,
+          hora: fila.horario_entrega_acordado,
+          lugarRecoleccion: 'Por acordar con el vendedor',
+          metodoPago: 'Pendiente',
+          requiereRepartidor: false,
+          repartidorAsignado: null,
+          notaCancelacion: '',
+          items: []
+        });
+      }
+      if (fila.id_producto !== null) {
+        mapa.get(fila.id_pedido).items.push({
+          id: fila.id_producto,
+          nombre: fila.producto_nombre,
+          imagen: fila.imagen_url,
+          cantidad: Number(fila.cantidad),
+          precio: Number(fila.precio_unitario)
+        });
+      }
+    }
+    return res.json([...mapa.values()]);
+  } catch (error) {
+    console.error('Error consultando pedidos:', error);
+    return res.status(500).json({ mensaje: 'No se pudieron consultar los pedidos.' });
   }
 }
 
 export async function obtenerMisPedidos(req, res) {
-  try {
-    const pedidosRes = await pool.query(
-      'SELECT * FROM pedidos WHERE comprador_id = $1 ORDER BY fecha DESC',
-      [req.usuario.id]
-    );
+  return consultarPedidos(req, res, 'id_comprador');
+}
 
-    const pedidos = pedidosRes.rows;
-
-    for (let pedido of pedidos) {
-      const detallesRes = await pool.query(`
-        SELECT dp.*, p.nombre, p.tienda, p.ubicacion, p.allow_cancellation 
-        FROM detalles_pedido dp 
-        JOIN productos p ON dp.producto_id = p.id 
-        WHERE dp.pedido_id = $1
-      `, [pedido.id]);
-      
-      pedido.items = detallesRes.rows;
-    }
-
-    res.json(pedidos);
-  } catch (error) {
-    res.status(500).json({ mensaje: 'Error al obtener historial de pedidos', error: error.message });
-  }
+export async function obtenerPedidosVendedor(req, res) {
+  const permiso = await pool.query(
+    `SELECT 1 FROM public.usuario_roles ur JOIN public.roles r ON r.id_rol = ur.id_rol
+     WHERE ur.id_usuario = $1 AND LOWER(r.nombre) = 'vendedor' LIMIT 1`,
+    [req.usuario.id]
+  ).catch(() => null);
+  if (!permiso) return res.status(500).json({ mensaje: 'No se pudo validar el rol del vendedor.' });
+  if (!permiso.rowCount) return res.status(403).json({ mensaje: 'No tienes rol de vendedor.' });
+  return consultarPedidos(req, res, 'id_vendedor');
 }
 
 export async function cancelarPedido(req, res) {
-  const pedidoId = req.params.id;
-  const userId = req.usuario.id;
-
-  const client = await pool.connect();
+  const idPedido = Number(req.params.id);
+  if (!Number.isSafeInteger(idPedido) || idPedido <= 0) {
+    return res.status(400).json({ mensaje: 'Pedido inválido.' });
+  }
   try {
-    // 1. Obtener el pedido verificando que pertenezca al usuario comprador
-    const pedidoRes = await client.query(
-      'SELECT * FROM pedidos WHERE id = $1 AND comprador_id = $2',
-      [pedidoId, userId]
+    const resultado = await pool.query(
+      `UPDATE public.pedidos SET estado = 'Cancelado'
+       WHERE id_pedido = $1 AND id_comprador = $2 AND estado = 'Pendiente'
+         AND fecha_pedido >= CURRENT_TIMESTAMP - INTERVAL '10 minutes'
+       RETURNING id_pedido`,
+      [idPedido, req.usuario.id]
     );
-
-    const pedido = pedidoRes.rows[0];
-    if (!pedido) {
-      return res.status(404).json({ mensaje: 'Pedido no encontrado o no autorizado' });
-    }
-
-    if (pedido.estado === 'Cancelado' || pedido.estado === 'Entregado') {
-      return res.status(400).json({ mensaje: `El pedido ya se encuentra en estado: ${pedido.estado}` });
-    }
-
-    // 2. Validar el tiempo límite de cancelación (ej. 10 minutos)
-    const TIEMPO_LIMITE_MINUTOS = 10;
-    const fechaCreacion = new Date(pedido.fecha);
-    const ahora = new Date();
-    const minutosTranscurridos = (ahora - fechaCreacion) / (1000 * 60);
-
-    if (minutosTranscurridos > TIEMPO_LIMITE_MINUTOS) {
-      return res.status(400).json({ 
-        mensaje: `El tiempo límite para cancelar ha expirado (máximo ${TIEMPO_LIMITE_MINUTOS} minutos).` 
-      });
-    }
-
-    // 3. Revisar si algún producto del pedido prohíbe la cancelación
-    const detallesRes = await client.query(`
-      SELECT dp.*, p.nombre, p.allow_cancellation 
-      FROM detalles_pedido dp 
-      JOIN productos p ON dp.producto_id = p.id 
-      WHERE dp.pedido_id = $1
-    `, [pedidoId]);
-
-    for (const item of detallesRes.rows) {
-      if (item.allow_cancellation === false) {
-        return res.status(400).json({ 
-          mensaje: `El producto "${item.nombre}" es de venta final y no acepta cancelación.` 
-        });
-      }
-    }
-
-    // 4. Actualizar el estado del pedido a 'Cancelado'
-    await client.query(
-      'UPDATE pedidos SET estado = $1 WHERE id = $2',
-      ['Cancelado', pedidoId]
-    );
-
-    res.json({ mensaje: 'Pedido cancelado exitosamente' });
+    if (!resultado.rowCount) return res.status(409).json({ mensaje: 'Solo puedes cancelar tus pedidos pendientes dentro de los primeros 10 minutos.' });
+    return res.json({ mensaje: 'Pedido cancelado.' });
   } catch (error) {
-    res.status(500).json({ mensaje: 'Error al procesar la cancelación', error: error.message });
-  } finally {
-    client.release();
+    console.error('Error al cancelar pedido:', error);
+    return res.status(500).json({ mensaje: 'No se pudo cancelar el pedido.' });
   }
 }

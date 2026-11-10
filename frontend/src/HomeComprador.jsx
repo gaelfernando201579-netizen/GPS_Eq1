@@ -13,6 +13,11 @@ import imgCarrito from './assets/carrito.png';
 const HomeComprador = ({ productos = [], cargandoProductos = false, errorProductos = '', recargarProductos = () => {}, irAPedidos, irAPerfil, carrito = {}, setCarrito = () => {} }) => {
   const [categoriaActiva, setCategoriaActiva] = useState('Todo');
   const [productoSeleccionado, setProductoSeleccionado] = useState(null);
+  const [checkoutAbierto, setCheckoutAbierto] = useState(false);
+  const [puntoEntrega, setPuntoEntrega] = useState('');
+  const [horarioEntrega, setHorarioEntrega] = useState('');
+  const [guardandoPedido, setGuardandoPedido] = useState(false);
+  const [errorPedido, setErrorPedido] = useState('');
   
   const [busqueda, setBusqueda] = useState('');
 
@@ -56,11 +61,35 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
   };
 
   const realizarPago = () => {
+    if (Object.values(carrito).some((cantidad) => Number(cantidad) > 0)) {
+      setErrorPedido('');
+      setCheckoutAbierto(true);
+    }
+  };
+
+  const confirmarPedido = async (evento) => {
+    evento.preventDefault();
+    setErrorPedido('');
     const itemsComprados = Object.entries(carrito).map(([id, cantidad]) => {
-      const prod = productos.find(p => String(p.id) === id);
-      return prod ? { ...prod, cantidad } : null;
+      const producto = productos.find((p) => String(p.id) === id);
+      return producto ? { ...producto, cantidad } : null;
     }).filter(Boolean);
-    if (itemsComprados.length > 0) irAPedidos(itemsComprados);
+    if (!itemsComprados.length) {
+      setErrorPedido('El carrito está vacío.');
+      return;
+    }
+    setGuardandoPedido(true);
+    try {
+      await irAPedidos(itemsComprados, {
+        puntoEntrega: puntoEntrega.trim(),
+        horarioEntrega: new Date(horarioEntrega).toISOString()
+      });
+      setCheckoutAbierto(false);
+    } catch (error) {
+      setErrorPedido(error.message || 'No fue posible guardar el pedido.');
+    } finally {
+      setGuardandoPedido(false);
+    }
   };
 
   const totalArticulos = Object.values(carrito).reduce((a, b) => a + b, 0);
@@ -181,6 +210,32 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
           <div onClick={realizarPago} className="flex flex-col items-center opacity-40 cursor-pointer pb-1 hover:opacity-80"><span className="text-2xl mb-1">🛍️</span></div>
           <div onClick={irAPerfil} className="flex flex-col items-center opacity-40 cursor-pointer pb-1 hover:opacity-80"><span className="text-2xl mb-1">👤</span></div>
         </div>
+
+        {checkoutAbierto && (
+          <div className="absolute inset-0 z-[60] flex items-end justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={() => !guardandoPedido && setCheckoutAbierto(false)} />
+            <form onSubmit={confirmarPedido} className="relative bg-white w-full rounded-t-[30px] p-6 pb-8 shadow-xl space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="font-black text-lg text-[#0A3895]">Confirmar pedido</h2>
+                <button type="button" disabled={guardandoPedido} onClick={() => setCheckoutAbierto(false)} className="font-bold text-gray-400">Cerrar ✕</button>
+              </div>
+              <p className="text-xs text-gray-600">{totalArticulos} producto(s) · Total estimado: <strong>${totalPrecio.toFixed(2)}</strong>. Se generará un pedido por vendedor.</p>
+              <label className="block text-xs font-bold text-gray-700">
+                Punto de entrega en el ITO
+                <input value={puntoEntrega} onChange={(e) => setPuntoEntrega(e.target.value)} maxLength={200} minLength={5} required placeholder="Ej. Biblioteca, entrada principal" className="w-full mt-2 border border-gray-200 rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-orange-400" />
+              </label>
+              <label className="block text-xs font-bold text-gray-700">
+                Fecha y hora solicitada para la entrega
+                <input type="datetime-local" value={horarioEntrega} onChange={(e) => setHorarioEntrega(e.target.value)} required className="w-full mt-2 border border-gray-200 rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-orange-400" />
+              </label>
+              <p className="text-xs text-gray-500">El envío del pedido no realiza ningún cobro. El vendedor debe confirmar la entrega.</p>
+              {errorPedido && <p role="alert" className="text-xs text-red-600 font-bold">{errorPedido}</p>}
+              <button type="submit" disabled={guardandoPedido} className="w-full bg-[#FF8C00] text-white font-black py-3.5 rounded-xl disabled:opacity-60">
+                {guardandoPedido ? 'GUARDANDO EN SUPABASE...' : 'CONFIRMAR Y ENVIAR PEDIDO'}
+              </button>
+            </form>
+          </div>
+        )}
 
         {productoSeleccionado && (
           <div className="absolute inset-0 z-50 flex items-end justify-center">

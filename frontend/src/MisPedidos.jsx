@@ -8,7 +8,7 @@ const ETAPAS = [
   { clave: 'Entregado', etiqueta: 'Entregado', icono: '✓' }
 ];
 
-const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cambiarEstadoPedido }) => {
+const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedidos = false, errorPedidos = '', cambiarEstadoPedido }) => {
   const obtenerIndiceEtapa = (estado) => {
     if (estado === 'Pendiente') return -1;
     if (estado === 'En preparación' || estado === 'Aceptado') return 0;
@@ -32,7 +32,9 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cambiarEstadoP
         <div className="flex-1 overflow-y-auto pb-24 px-5 pt-4 hide-scrollbar">
           <h2 className="font-black text-xl mb-4 text-gray-900 tracking-wide uppercase">Mis Pedidos</h2>
 
-          {pedidosVendedor.length === 0 && (
+          {cargandoPedidos && <p className="text-center text-gray-500 text-sm mb-3">Consultando pedidos en Supabase...</p>}
+          {errorPedidos && <p role="alert" className="text-red-600 text-sm mb-3">{errorPedidos}</p>}
+          {!cargandoPedidos && !errorPedidos && pedidosVendedor.length === 0 && (
             <div className="text-center bg-gray-50 p-6 rounded-3xl border border-gray-100">
               <span className="text-4xl mb-2 block">🛒</span>
               <p className="text-gray-500 font-bold">Aún no tienes pedidos activos</p>

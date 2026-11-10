@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import CampyLogin from './CampyLogin';
+import CampyRegistro from './CampyRegistro';
 import HomeComprador from './HomeComprador';
 import MisPedidos from './MisPedidos';
 import MiPerfil from './MiPerfil';
@@ -10,6 +11,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 function App() {
   const [pantallaActual, setPantallaActual] = useState('login');
+  const [registroExitoso, setRegistroExitoso] = useState(false);
   const [tokenAuth, setTokenAuth] = useState(localStorage.getItem('campy_token') || null);
   const [usuarioActual, setUsuarioActual] = useState({
     nombre: 'Carlos Yahel Alemán Cruz',
@@ -27,6 +29,9 @@ function App() {
   const [recargaCatalogo, setRecargaCatalogo] = useState(0);
   const [carritoGlobal, setCarritoGlobal] = useState({});
   const [pedidosPorCumplir, setPedidosPorCumplir] = useState([]);
+  const [pedidosParaVendedor, setPedidosParaVendedor] = useState([]);
+  const [cargandoPedidos, setCargandoPedidos] = useState(false);
+  const [errorPedidos, setErrorPedidos] = useState('');
 
   useEffect(() => {
     let vigente = true;
@@ -92,33 +97,61 @@ function App() {
     setRecargaCatalogo((n) => n + 1);
   };
 
-  const procesarCompra = async (itemsComprados) => {
-    const totalOrden = itemsComprados.reduce((acc, it) => acc + it.precio * it.cantidad, 0);
-    const nuevoPedidoId = Math.floor(Math.random() * 90000) + 10000;
-    const primerItem = itemsComprados[0] || {};
+  useEffect(() => {
+    if (!tokenAuth || pantallaActual === 'login' || pantallaActual === 'repartidor') return;
+    let vigente = true;
+    const vendedor = pantallaActual === 'vendedor';
+    const ruta = vendedor ? '/api/pedidos/vendedor' : '/api/pedidos';
 
-    const nuevoPedido = {
-      id: nuevoPedidoId,
-      tienda: primerItem.tienda || 'Vendedor Campus ITO',
-      compradorNombre: usuarioActual.nombre,
-      compradorCarrera: usuarioActual.carrera,
-      lugarRecoleccion: primerItem.ubicacion || 'Edificio L',
-      puntoEntrega: 'Edificio L - Salón L3',
-      hora: 'Hace un momento',
-      metodoPago: 'Efectivo',
-      estado: 'Pendiente',
-      requiereRepartidor: false,
-      repartidorAsignado: null,
-      costoProductoRepartidor: totalOrden,
-      comisionRepartidor: 10,
-      notaCancelacion: '',
-      total: totalOrden,
-      items: itemsComprados
+    const cargar = async () => {
+      if (!vendedor) setCargandoPedidos(true);
+      setErrorPedidos('');
+      try {
+        const respuesta = await fetch(`${API_URL}${ruta}`, {
+          headers: { Authorization: `Bearer ${tokenAuth}` }
+        });
+        const datos = await respuesta.json();
+        if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudieron consultar los pedidos.');
+        if (!Array.isArray(datos)) throw new Error('La respuesta de pedidos no es válida.');
+        if (vigente) {
+          if (vendedor) setPedidosParaVendedor(datos);
+          else setPedidosPorCumplir(datos);
+        }
+      } catch (error) {
+        if (vigente) setErrorPedidos(error.message || 'No se pudieron consultar los pedidos.');
+      } finally {
+        if (vigente) setCargandoPedidos(false);
+      }
     };
+    cargar();
+    return () => { vigente = false; };
+  }, [pantallaActual, tokenAuth]);
 
-    setPedidosPorCumplir((prev) => [nuevoPedido, ...prev]);
+  const procesarCompra = async (itemsComprados, datosEntrega) => {
+    const token = localStorage.getItem('campy_token') || tokenAuth;
+    if (!token) throw new Error('Tu sesión no tiene token. Cierra sesión y vuelve a ingresar.');
+
+    const respuesta = await fetch(`${API_URL}/api/pedidos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        items: itemsComprados.map((item) => ({
+          id_producto: Number(item.id_producto || item.id),
+          cantidad: Number(item.cantidad)
+        })),
+        puntoEntrega: datosEntrega.puntoEntrega,
+        horarioEntrega: datosEntrega.horarioEntrega
+      })
+    });
+    const resultado = await respuesta.json().catch(() => ({}));
+    if (!respuesta.ok) throw new Error(resultado.mensaje || 'No se pudo guardar el pedido en Supabase.');
+
     setCarritoGlobal({});
     setPantallaActual('pedidos');
+    return resultado;
   };
 
   const registrarComoVendedor = async (datosVendedor) => {
@@ -163,7 +196,7 @@ function App() {
 
   // Cuando el vendedor acepta un pedido y configura si lo lleva él o un repartidor
   const configurarAceptacionPedido = async (pedidoId, config) => {
-    setPedidosPorCumplir((prev) =>
+    setPedidosParaVendedor((prev) =>
       prev.map((p) => (p.id === pedidoId ? { ...p, ...config } : p))
     );
   };
@@ -171,11 +204,14 @@ function App() {
   // Cuando el vendedor o repartidor cambia el estado (En preparación, En camino, En el punto de entrega, Entregado, Cancelado)
   const cambiarEstadoPedido = async (pedidoId, nuevoEstado, notaCancelacion = '') => {
     setPedidosPorCumplir((prev) =>
-      prev.map((p) =>
-        p.id === pedidoId
-          ? { ...p, estado: nuevoEstado, notaCancelacion: notaCancelacion || p.notaCancelacion }
-          : p
-      )
+      prev.map((p) => p.id === pedidoId
+        ? { ...p, estado: nuevoEstado, notaCancelacion: notaCancelacion || p.notaCancelacion }
+        : p)
+    );
+    setPedidosParaVendedor((prev) =>
+      prev.map((p) => p.id === pedidoId
+        ? { ...p, estado: nuevoEstado, notaCancelacion: notaCancelacion || p.notaCancelacion }
+        : p)
     );
   };
 
@@ -193,9 +229,16 @@ function App() {
   return (
     <>
       {pantallaActual === 'login' && (
-        <CampyLogin alIngresar={manejarIngreso} />
+        <CampyLogin alIngresar={manejarIngreso} irARegistro={() => setPantallaActual('registro')} registroExitoso={registroExitoso} />
       )}
       
+      {pantallaActual === 'registro' && (
+        <CampyRegistro
+          volverAlLogin={() => setPantallaActual('login')}
+          alRegistrar={() => { setRegistroExitoso(true); setPantallaActual('login'); }}
+        />
+      )}
+
       {pantallaActual === 'home' && (
         <HomeComprador 
           productos={productosCatalogo}
@@ -212,6 +255,8 @@ function App() {
       {pantallaActual === 'pedidos' && (
         <MisPedidos 
           pedidosVendedor={pedidosPorCumplir}
+          cargandoPedidos={cargandoPedidos}
+          errorPedidos={errorPedidos}
           cambiarEstadoPedido={cambiarEstadoPedido}
           irAInicio={() => setPantallaActual('home')} 
           irAPerfil={() => setPantallaActual('perfil')} 
@@ -230,6 +275,9 @@ function App() {
           irAPedidos={() => setPantallaActual('pedidos')}
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');
+            setTokenAuth(null);
+            setPedidosPorCumplir([]);
+            setPedidosParaVendedor([]);
             setCarritoGlobal({});
             setPantallaActual('login');
           }}
@@ -248,12 +296,17 @@ function App() {
           agregarNuevoProducto={agregarNuevoProducto}
           editarProducto={editarProducto}
           eliminarProducto={eliminarProducto}
-          pedidosVendedor={pedidosPorCumplir}
+          pedidosVendedor={pedidosParaVendedor}
+          cargandoPedidos={cargandoPedidos}
+          errorPedidos={errorPedidos}
           configurarAceptacionPedido={configurarAceptacionPedido}
           cambiarEstadoPedidoVendedor={cambiarEstadoPedido}
           volverAModoCliente={() => setPantallaActual('home')}
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');
+            setTokenAuth(null);
+            setPedidosPorCumplir([]);
+            setPedidosParaVendedor([]);
             setCarritoGlobal({});
             setPantallaActual('login');
           }}
@@ -269,6 +322,9 @@ function App() {
           volverAModoCliente={() => setPantallaActual('home')}
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');
+            setTokenAuth(null);
+            setPedidosPorCumplir([]);
+            setPedidosParaVendedor([]);
             setCarritoGlobal({});
             setPantallaActual('login');
           }}

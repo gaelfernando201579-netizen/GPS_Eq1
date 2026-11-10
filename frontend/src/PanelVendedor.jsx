@@ -12,6 +12,8 @@ const PanelVendedor = ({
   editarProducto,
   eliminarProducto,
   pedidosVendedor = [],
+  cargandoPedidos = false,
+  errorPedidos = '',
   configurarAceptacionPedido,
   cambiarEstadoPedidoVendedor,
   volverAModoCliente,
@@ -371,11 +373,15 @@ const PanelVendedor = ({
                 </p>
               </div>
 
+              {cargandoPedidos && <p className="text-xs text-gray-500 mb-3">Consultando pedidos en Supabase...</p>}
+              {errorPedidos && <p role="alert" className="text-red-600 text-xs mb-3">{errorPedidos}</p>}
               {pedidosVendedor.length === 0 ? (
+                !cargandoPedidos && !errorPedidos && (
                 <div className="bg-white rounded-3xl p-6 text-center border border-gray-100">
                   <span className="text-4xl block mb-2">📭</span>
                   <p className="font-bold text-sm text-gray-700">No tienes pedidos registrados</p>
                 </div>
+                )
               ) : (
                 <div className="flex flex-col gap-4">
                   {pedidosVendedor.map((ped) => {

@@ -64,7 +64,8 @@ const CampyLogin = ({ alIngresar }) => {
             nombre: modoRegistro ? nombre.trim() : correo.split('@')[0],
             correo: correo.trim(),
             carrera: carreras.join(', ')
-          }
+          },
+          datos.token
         );
         return;
       } else {
