@@ -8,6 +8,8 @@ const MiPerfil = ({
   usuario,
   setUsuario,
   registrarComoVendedor,
+  solicitudVendedor,
+  irAPanelModerador,
   registrarComoRepartidor,
   irAPanelVendedor,
   irAPanelRepartidor,
@@ -30,6 +32,8 @@ const MiPerfil = ({
   const [matrizHorario, setMatrizHorario] = useState(usuario?.datosVendedor?.matrizHorario || { LUN_10_12: true, MIE_10_12: true, VIE_10_12: true });
   const [notaHorario, setNotaHorario] = useState(usuario?.datosVendedor?.notaHorario || '');
   const [errorHorario, setErrorHorario] = useState('');
+  const [errorSolicitud, setErrorSolicitud] = useState('');
+  const [enviandoSolicitud, setEnviandoSolicitud] = useState(false);
 
   // Estados para Alta de Repartidor
   const [idControlRep, setIdControlRep] = useState(usuario?.datosRepartidor?.identificacion || '');
@@ -86,17 +90,24 @@ const MiPerfil = ({
     const resumen = formatearResumenHorario(matrizHorario);
     const horariosTexto = notaHorario.trim() ? `${resumen} — Nota: ${notaHorario.trim()}` : resumen;
 
-    await registrarComoVendedor({
-      identificacion: idControl.trim(),
-      nombre: nombreVendedor.trim(),
-      queVende: giroVenta.trim(),
-      ubicacion: ubicacionBase.trim(),
-      matrizHorario,
-      notaHorario: notaHorario.trim(),
-      horarios: horariosTexto
-    });
-
-    setModalActivo(null);
+    setErrorSolicitud('');
+    setEnviandoSolicitud(true);
+    try {
+      await registrarComoVendedor({
+        identificacion: idControl.trim(),
+        nombre: nombreVendedor.trim(),
+        queVende: giroVenta.trim(),
+        ubicacion: ubicacionBase.trim(),
+        matrizHorario,
+        notaHorario: notaHorario.trim(),
+        horarios: horariosTexto
+      });
+      setModalActivo(null);
+    } catch (error) {
+      setErrorSolicitud(error.message || 'No fue posible enviar tu solicitud.');
+    } finally {
+      setEnviandoSolicitud(false);
+    }
   };
 
   const manejarAltaRepartidor = async (e) => {
@@ -175,8 +186,36 @@ const MiPerfil = ({
             </button>
           </div>
 
+          {usuario?.esModerador && (
+            <div className="bg-white rounded-3xl p-5 shadow-sm border-2 border-[#0A3895] mb-4">
+              <span className="text-[#0A3895] font-black text-xs">MODERACIÓN CAMPY</span>
+              <p className="text-gray-600 text-xs mt-2 mb-3">Revisa y aprueba o rechaza solicitudes para vender.</p>
+              <button onClick={irAPanelModerador} className="w-full bg-[#0A3895] text-white font-black text-xs py-3.5 rounded-2xl">
+                Ir al Panel de Moderador ➔
+              </button>
+            </div>
+          )}
+
           {/* APARTADO 1: MODO VENDEDOR */}
           {!usuario?.esVendedor ? (
+            solicitudVendedor?.estado === 'Pendiente' ? (
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-3xl p-5 mb-4">
+                <h4 className="font-black text-amber-900">Solicitud de vendedor pendiente</h4>
+                <p className="text-sm text-amber-800 mt-2">Tu solicitud fue enviada a moderación. Te avisaremos aquí si fue aprobada o rechazada.</p>
+              </div>
+            ) : solicitudVendedor?.estado === 'Rechazada' ? (
+              <div className="bg-red-50 border-2 border-red-200 rounded-3xl p-5 mb-4">
+                <h4 className="font-black text-red-700">Solicitud rechazada</h4>
+                <p className="text-sm text-gray-700 mt-2">Tu solicitud para vender no fue aprobada.</p>
+                {solicitudVendedor.comentario_revision && (
+                  <p className="text-sm text-red-800 mt-2">Motivo: {solicitudVendedor.comentario_revision}</p>
+                )}
+                <button onClick={() => { setErrorSolicitud(''); setModalActivo('altaVendedor'); }}
+                  className="w-full bg-[#0A3895] text-white rounded-2xl py-3 font-bold text-xs mt-4">
+                  Enviar una nueva solicitud
+                </button>
+              </div>
+            ) : (
             <div className="bg-gradient-to-r from-[#0A3895] to-[#1e4eb8] rounded-3xl p-5 text-white shadow-lg mb-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -197,6 +236,7 @@ const MiPerfil = ({
                 Darme de alta como vendedor
               </button>
             </div>
+            )
           ) : (
             <div className="bg-white rounded-3xl p-5 shadow-sm border-2 border-[#FF8C00] mb-4">
               <span className="bg-orange-100 text-[#FF8C00] text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full">
@@ -293,7 +333,7 @@ const MiPerfil = ({
             <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-3"></div>
             <h2 className="text-lg font-black text-[#0A3895]">Alta de Vendedor</h2>
             <p className="text-[11px] text-gray-500 mb-3">
-              Al finalizar entrarás directamente a tu nuevo panel exclusivo de vendedor.
+              Tu solicitud se enviará a un moderador. Solo podrás acceder al panel de vendedor cuando sea aprobada.
             </p>
 
             <form onSubmit={manejarAltaVendedor} className="flex flex-col gap-3">
@@ -406,11 +446,13 @@ const MiPerfil = ({
                 )}
               </div>
 
+              {errorSolicitud && <p role="alert" className="text-sm text-red-700 bg-red-50 rounded-xl p-2">{errorSolicitud}</p>}
               <button
+                  disabled={enviandoSolicitud}
                 type="submit"
                 className="w-full bg-[#FF8C00] hover:bg-[#e67e00] text-white font-black text-xs uppercase tracking-wider py-3.5 rounded-xl shadow-lg mt-1 active:scale-95 transition-transform"
               >
-                Finalizar Alta e Ir a Vista Vendedor ➔
+                {enviandoSolicitud ? 'Enviando solicitud...' : 'Enviar solicitud para aprobación ➔'}
               </button>
             </form>
           </div>

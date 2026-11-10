@@ -10,7 +10,7 @@ import imgSabritas from './assets/sabritas.png';
 import imgDulces from './assets/dulces.png';
 import imgCarrito from './assets/carrito.png'; 
 
-const HomeComprador = ({ productos = [], cargandoProductos = false, errorProductos = '', recargarProductos = () => {}, irAPedidos, irAPerfil, carrito = {}, setCarrito = () => {} }) => {
+const HomeComprador = ({ productos = [], cargandoProductos = false, errorProductos = '', recargarProductos = () => {}, irAPedidos, irAMisPedidos, irAPerfil, carrito = {}, setCarrito = () => {} }) => {
   const [categoriaActiva, setCategoriaActiva] = useState('Todo');
   const [productoSeleccionado, setProductoSeleccionado] = useState(null);
   const [checkoutAbierto, setCheckoutAbierto] = useState(false);
@@ -247,7 +247,7 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
             <div className="bg-[#0A3895] w-12 h-12 rounded-full flex items-center justify-center shadow-lg -mt-5 border-4 border-white text-white text-xl">🏠</div>
             <span className="text-[#0A3895] text-[10px] font-bold mt-1">Inicio</span>
           </div>
-          <button type="button" onClick={abrirCarrito} aria-label="Ver carrito de compras" className="flex flex-col items-center opacity-40 cursor-pointer pb-1 hover:opacity-80"><span className="text-2xl mb-1">🛍️</span></button>
+          <button type="button" onClick={irAMisPedidos} aria-label="Ver mis pedidos" className="flex flex-col items-center opacity-40 cursor-pointer pb-1 hover:opacity-80"><span className="text-2xl mb-1">📋</span><span className="text-[10px] font-bold mt-1">Pedidos</span></button>
           <div onClick={irAPerfil} className="flex flex-col items-center opacity-40 cursor-pointer pb-1 hover:opacity-80"><span className="text-2xl mb-1">👤</span></div>
         </div>
 

@@ -84,6 +84,7 @@ export async function login(req, res) {
     const roles = consultaRoles.rows.map((fila) => fila.nombre);
     const esVendedor = roles.includes('vendedor');
     const esRepartidor = roles.includes('repartidor');
+    const esModerador = roles.includes('moderador');
 
     const token = jwt.sign(
       { id: usuario.id_usuario, correo: usuario.correo },
@@ -99,7 +100,8 @@ export async function login(req, res) {
         nombre: usuario.nombre,
         correo: usuario.correo,
         esVendedor,
-        esRepartidor
+        esRepartidor,
+        esModerador
       }
     });
   } catch (error) {

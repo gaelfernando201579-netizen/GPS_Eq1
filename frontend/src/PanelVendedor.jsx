@@ -577,8 +577,17 @@ const PanelVendedor = ({
                                 Cancelar con nota
                               </button>
                               <button
+                                type="button"
+                                disabled={ped.estado !== 'En el punto de entrega'}
+                                title={ped.estado === 'En el punto de entrega'
+                                  ? 'Confirmar entrega del pedido'
+                                  : 'Primero selecciona En camino y después En el lugar'}
                                 onClick={() => manejarCambioEstadoPedido(ped.id, 'Entregado')}
-                                className="flex-1 bg-[#22C55E] hover:bg-[#16a34a] text-white font-black text-xs py-2.5 rounded-xl shadow-sm"
+                                className={`flex-1 bg-[#22C55E] text-white font-black text-xs py-2.5 rounded-xl shadow-sm ${
+                                  ped.estado === 'En el punto de entrega'
+                                    ? 'hover:bg-[#16a34a]'
+                                    : 'opacity-40 cursor-not-allowed'
+                                }`}
                               >
                                 ✓ Marcar Entregado
                               </button>

@@ -7,6 +7,7 @@ import authRoutes from './src/routes/authRoutes.js';
 import productRoutes from './src/routes/productRoutes.js';
 import orderRoutes from './src/routes/orderRoutes.js';
 import userRoutes from './src/routes/userRoutes.js';
+import solicitudVendedorRoutes from './src/routes/solicitudVendedorRoutes.js';
 
 dotenv.config();
 
@@ -21,6 +22,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/productos', productRoutes);
 app.use('/api/pedidos', orderRoutes);
 app.use('/api/usuarios', userRoutes);
+app.use('/api/solicitudes-vendedor', solicitudVendedorRoutes);
 
 app.get('/', (req, res) => {
   res.send('Servidor API de Campy App corriendo correctamente');

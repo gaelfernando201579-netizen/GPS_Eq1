@@ -6,6 +6,7 @@ import MisPedidos from './MisPedidos';
 import MiPerfil from './MiPerfil';
 import PanelVendedor from './PanelVendedor';
 import PanelRepartidor from './PanelRepartidor';
+import PanelModerador from './PanelModerador';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -13,6 +14,7 @@ function App() {
   const [pantallaActual, setPantallaActual] = useState('login');
   const [registroExitoso, setRegistroExitoso] = useState(false);
   const [tokenAuth, setTokenAuth] = useState(localStorage.getItem('campy_token') || null);
+  const [solicitudVendedor, setSolicitudVendedor] = useState(null);
   const [usuarioActual, setUsuarioActual] = useState({
     nombre: 'Carlos Yahel Alemán Cruz',
     correo: 'estudiante@itoaxaca.edu.mx',
@@ -20,7 +22,8 @@ function App() {
     esVendedor: false,
     datosVendedor: null,
     esRepartidor: false,
-    datosRepartidor: null
+    datosRepartidor: null,
+    esModerador: false
   });
 
   const [productosCatalogo, setProductosCatalogo] = useState([]);
@@ -84,11 +87,15 @@ function App() {
         esVendedor: datosUsuario.esVendedor === true,
         datosVendedor: null,
         esRepartidor: datosUsuario.esRepartidor === true,
+        esModerador: datosUsuario.esModerador === true,
         datosRepartidor: null
       }));
     }
+    setSolicitudVendedor(null);
     setPantallaActual(
-      datosUsuario?.esVendedor === true
+      datosUsuario?.esModerador === true
+        ? 'moderador'
+        : datosUsuario?.esVendedor === true
         ? 'vendedor'
         : datosUsuario?.esRepartidor === true
           ? 'repartidor'
@@ -154,14 +161,45 @@ function App() {
     return resultado;
   };
 
+  // El rol Vendedor solo se activa cuando un moderador aprueba la solicitud.
   const registrarComoVendedor = async (datosVendedor) => {
-    setUsuarioActual((prev) => ({
-      ...prev,
-      esVendedor: true,
-      datosVendedor
-    }));
-    setPantallaActual('vendedor');
+    const token = localStorage.getItem('campy_token') || tokenAuth;
+    if (!token) throw new Error('Inicia sesión para solicitar el rol de vendedor.');
+    const respuesta = await fetch(`${API_URL}/api/solicitudes-vendedor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(datosVendedor)
+    });
+    const datos = await respuesta.json().catch(() => ({}));
+    if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo enviar la solicitud.');
+    setSolicitudVendedor(datos.solicitud);
+    return datos;
   };
+
+  useEffect(() => {
+    if (pantallaActual !== 'perfil' || !tokenAuth) return;
+    let vigente = true;
+    const consultar = async () => {
+      try {
+        const respuesta = await fetch(`${API_URL}/api/solicitudes-vendedor/mia`, {
+          headers: { Authorization: `Bearer ${tokenAuth}` }
+        });
+        if (!respuesta.ok) return;
+        const datos = await respuesta.json();
+        if (!vigente) return;
+        setSolicitudVendedor(datos.solicitud);
+        setUsuarioActual((prev) => ({
+          ...prev,
+          esVendedor: datos.esVendedor === true,
+          esRepartidor: datos.esRepartidor === true,
+          esModerador: datos.esModerador === true
+        }));
+      } catch (_) { /* Se conserva la última información visible. */ }
+    };
+    consultar();
+    const intervalo = setInterval(consultar, 15000);
+    return () => { vigente = false; clearInterval(intervalo); };
+  }, [pantallaActual, tokenAuth]);
 
   const registrarComoRepartidor = async (datosRepartidor) => {
     setUsuarioActual((prev) => ({
@@ -289,6 +327,7 @@ function App() {
           carrito={carritoGlobal} 
           setCarrito={setCarritoGlobal}
           irAPedidos={procesarCompra} 
+          irAMisPedidos={() => setPantallaActual('pedidos')}
           irAPerfil={() => setPantallaActual('perfil')} 
         />
       )}
@@ -309,6 +348,8 @@ function App() {
           usuario={usuarioActual}
           setUsuario={setUsuarioActual}
           registrarComoVendedor={registrarComoVendedor}
+          solicitudVendedor={solicitudVendedor}
+          irAPanelModerador={() => setPantallaActual('moderador')}
           registrarComoRepartidor={registrarComoRepartidor}
           irAPanelVendedor={() => setPantallaActual('vendedor')}
           irAPanelRepartidor={() => setPantallaActual('repartidor')}
@@ -317,9 +358,32 @@ function App() {
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');
             setTokenAuth(null);
+            setSolicitudVendedor(null);
             setPedidosPorCumplir([]);
             setPedidosParaVendedor([]);
             setCarritoGlobal({});
+            setPantallaActual('login');
+          }}
+        />
+      )}
+
+      {pantallaActual === 'moderador' && usuarioActual.esModerador && (
+        <PanelModerador
+          token={tokenAuth}
+          usuario={usuarioActual}
+          productos={productosCatalogo}
+          cargandoProductos={cargandoProductos}
+          errorProductos={errorProductos}
+          irAPerfil={() => setPantallaActual('perfil')}
+          irAPanelVendedor={() => setPantallaActual('vendedor')}
+          irAInicio={() => setPantallaActual('home')}
+          cerrarSesion={() => {
+            localStorage.removeItem('campy_token');
+            setTokenAuth(null);
+            setSolicitudVendedor(null);
+            setCarritoGlobal({});
+            setPedidosPorCumplir([]);
+            setPedidosParaVendedor([]);
             setPantallaActual('login');
           }}
         />
@@ -346,6 +410,7 @@ function App() {
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');
             setTokenAuth(null);
+            setSolicitudVendedor(null);
             setPedidosPorCumplir([]);
             setPedidosParaVendedor([]);
             setCarritoGlobal({});
@@ -364,6 +429,7 @@ function App() {
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');
             setTokenAuth(null);
+            setSolicitudVendedor(null);
             setPedidosPorCumplir([]);
             setPedidosParaVendedor([]);
             setCarritoGlobal({});
