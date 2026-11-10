@@ -8,21 +8,6 @@ import PanelRepartidor from './PanelRepartidor';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-const PRODUCTOS_INICIALES = [
-  { id: 1, nombre: 'Torta de Jamón', tienda: 'Vende: Juan Pérez', ubicacion: 'Edificio L', precio: 35, categoria: 'Comida', definicion: 'Torta recién hecha con jamón de pavo, queso, aguacate y jitomate.', comentario: 'Incluye sobrecito de chiles jalapeños', imagen: null },
-  { id: 2, nombre: 'Croissant Preparado', tienda: 'Vende: Ana Gómez', ubicacion: 'Kiosco Central', precio: 45, categoria: 'Comida', definicion: 'Croissant dorado a la plancha con pechuga de pavo y queso manchego.', comentario: 'Calientito, recién salido', imagen: null },
-  { id: 3, nombre: 'Rebanada de Pizza', tienda: 'Vende: Luis', ubicacion: 'Canchas', precio: 25, categoria: 'Comida', definicion: 'Rebanada grande de pepperoni con extra queso.', comentario: 'Entregas rápidas en las gradas', imagen: null },
-  { id: 4, nombre: 'Fresas con Crema', tienda: 'Vende: María', ubicacion: 'Entrada Principal', precio: 45, categoria: 'Postres', definicion: 'Vaso de 12oz con fresas frescas y crema dulce casera.', comentario: 'Puedes pedir topping de granola o nuez sin costo', imagen: null },
-  { id: 5, nombre: 'Tartaletas de Frutas', tienda: 'Vende: Sofía', ubicacion: 'Edificio D', precio: 30, categoria: 'Postres', definicion: 'Base crujiente con crema pastelera, kiwi, fresa y durazno.', comentario: 'Hechas hoy por la mañana', imagen: null },
-  { id: 6, nombre: 'Memoria USB 32GB', tienda: 'Vende: Carlos', ubicacion: 'Biblioteca', precio: 120, categoria: 'Tecnología', definicion: 'Memoria Kingston 32GB USB 3.2 totalmente nueva en blíster.', comentario: 'Garantía de 1 mes', imagen: null },
-  { id: 7, nombre: 'Paquete 5 Folders', tienda: 'Vende: Diana', ubicacion: 'Biblioteca', precio: 15, categoria: 'Papelería', definicion: 'Folders tamaño carta color crema para entregas escolares.', comentario: 'Incluye broches Baco si los necesitas (+$3)', imagen: null },
-  { id: 8, nombre: 'Coca-Cola 600ml', tienda: 'Vende: Juan Pérez', ubicacion: 'Edificio L', precio: 20, categoria: 'Bebidas', definicion: 'Refresco bien frío en botella de 600ml.', comentario: 'Directo de hielera', imagen: null },
-  { id: 9, nombre: 'Arizona de Sandía', tienda: 'Vende: Luis', ubicacion: 'Canchas', precio: 25, categoria: 'Bebidas', definicion: 'Lata grande de 680ml sabor sandía bien fría.', comentario: 'Ideal para después de jugar', imagen: null },
-  { id: 10, nombre: 'Electrolit Fresa', tienda: 'Vende: Ana Gómez', ubicacion: 'Kiosco Central', precio: 32, categoria: 'Bebidas', definicion: 'Suero rehidratante sabor fresa de 625ml.', comentario: 'Muy frío', imagen: null },
-  { id: 11, nombre: 'Doritos Nacho', tienda: 'Vende: Pedro', ubicacion: 'Pasillo Central', precio: 18, categoria: 'Sabritas', definicion: 'Bolsa individual de Doritos Nacho con queso.', comentario: 'Le pongo salsa Valentina y limón gratis', imagen: null },
-  { id: 12, nombre: 'Picafresas (10pz)', tienda: 'Vende: María', ubicacion: 'Entrada Principal', precio: 15, categoria: 'Dulces', definicion: 'Bolsita con 10 picafresas Vero.', comentario: 'También vendo sueltas a $2', imagen: null },
-];
-
 const PEDIDOS_INICIALES = [
   {
     id: 48201,
@@ -79,20 +64,48 @@ function App() {
     datosRepartidor: null
   });
 
-  const [productosCatalogo, setProductosCatalogo] = useState(PRODUCTOS_INICIALES);
+  const [productosCatalogo, setProductosCatalogo] = useState([]);
+  const [cargandoProductos, setCargandoProductos] = useState(true);
+  const [errorProductos, setErrorProductos] = useState('');
+  const [recargaCatalogo, setRecargaCatalogo] = useState(0);
   const [carritoGlobal, setCarritoGlobal] = useState({});
   const [pedidosPorCumplir, setPedidosPorCumplir] = useState(PEDIDOS_INICIALES);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/productos`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setProductosCatalogo(data);
+    let vigente = true;
+
+    const obtenerCatalogo = async () => {
+      setCargandoProductos(true);
+      setErrorProductos('');
+      try {
+        const respuesta = await fetch(`${API_URL}/api/productos`);
+        if (!respuesta.ok) throw new Error('No fue posible consultar el catálogo.');
+        const datos = await respuesta.json();
+        if (!Array.isArray(datos)) throw new Error('La respuesta del catálogo no es válida.');
+
+        if (vigente) {
+          setProductosCatalogo(datos.map((producto) => ({
+            ...producto,
+            id: producto.id_producto,
+            precio: Number(producto.precio),
+            categoria: producto.categoria || 'Sin categoría',
+            tienda: producto.nombre_vendedor ? `Vende: ${producto.nombre_vendedor}` : 'Vendedor no disponible',
+            ubicacion: 'Por acordar con el vendedor',
+          })));
         }
-      })
-      .catch(() => {});
-  }, []);
+      } catch (error) {
+        if (vigente) {
+          setProductosCatalogo([]);
+          setErrorProductos('No se pudieron cargar los productos de Supabase.');
+        }
+      } finally {
+        if (vigente) setCargandoProductos(false);
+      }
+    };
+
+    obtenerCatalogo();
+    return () => { vigente = false; };
+  }, [recargaCatalogo]);
 
   const manejarIngreso = (datosUsuario, token = null) => {
     if (token) {
@@ -108,6 +121,7 @@ function App() {
       }));
     }
     setPantallaActual('home');
+    setRecargaCatalogo((n) => n + 1);
   };
 
   const procesarCompra = async (itemsComprados) => {
@@ -217,6 +231,9 @@ function App() {
       {pantallaActual === 'home' && (
         <HomeComprador 
           productos={productosCatalogo}
+          cargandoProductos={cargandoProductos}
+          errorProductos={errorProductos}
+          recargarProductos={() => setRecargaCatalogo((n) => n + 1)}
           carrito={carritoGlobal} 
           setCarrito={setCarritoGlobal}
           irAPedidos={procesarCompra} 

@@ -4,24 +4,43 @@ import { pool } from '../config/db.js';
 export async function obtenerProductos(req, res) {
   try {
     const { categoria, busqueda } = req.query;
-    let query = 'SELECT * FROM productos WHERE 1=1';
-    let params = [];
-    let counter = 1;
+    const filtros = [];
+    const parametros = [];
 
     if (categoria && categoria !== 'Todo') {
-      query += ` AND categoria = $${counter++}`;
-      params.push(categoria);
+      parametros.push(categoria);
+      filtros.push(`c.nombre ILIKE $${parametros.length}`);
     }
 
-    if (busqueda) {
-      query += ` AND (nombre ILIKE $${counter} OR tienda ILIKE $${counter})`;
-      params.push(`%${busqueda}%`);
+    if (busqueda && busqueda.trim()) {
+      parametros.push(`%${busqueda.trim()}%`);
+      filtros.push(`(p.nombre ILIKE $${parametros.length} OR u.nombre ILIKE $${parametros.length})`);
     }
 
-    const productos = await pool.query(query, params);
-    res.json(productos.rows);
+    const consulta = `
+      SELECT
+        p.id_producto,
+        p.id_vendedor,
+        p.nombre,
+        p.descripcion,
+        p.precio,
+        p.cantidad_disponible,
+        p.imagen_url,
+        p.estado,
+        c.nombre AS categoria,
+        u.nombre AS nombre_vendedor
+      FROM public.productos p
+      LEFT JOIN public.categorias c ON c.id_categoria = p.id_categoria
+      LEFT JOIN public.usuarios u ON u.id_usuario = p.id_vendedor
+      ${filtros.length ? `WHERE ${filtros.join(' AND ')}` : ''}
+      ORDER BY p.id_producto ASC
+    `;
+
+    const resultado = await pool.query(consulta, parametros);
+    res.json(resultado.rows);
   } catch (error) {
-    res.status(500).json({ mensaje: 'Error al obtener productos', error: error.message });
+    console.error('Error al obtener productos:', error);
+    res.status(500).json({ mensaje: 'Error al obtener productos' });
   }
 }
 

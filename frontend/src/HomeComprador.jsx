@@ -10,39 +10,31 @@ import imgSabritas from './assets/sabritas.png';
 import imgDulces from './assets/dulces.png';
 import imgCarrito from './assets/carrito.png'; 
 
-const HomeComprador = ({ irAPedidos, irAPerfil, carrito = {}, setCarrito = () => {} }) => {
+const HomeComprador = ({ productos = [], cargandoProductos = false, errorProductos = '', recargarProductos = () => {}, irAPedidos, irAPerfil, carrito = {}, setCarrito = () => {} }) => {
   const [categoriaActiva, setCategoriaActiva] = useState('Todo');
   const [productoSeleccionado, setProductoSeleccionado] = useState(null);
   
   const [busqueda, setBusqueda] = useState('');
 
-  const todosLosProductos = [
-    { id: 1, nombre: 'Torta de Jamón', tienda: 'Vende: Juan Pérez', ubicacion: 'Edificio L', precio: 35, categoria: 'Comida' },
-    { id: 2, nombre: 'Croissant Preparado', tienda: 'Vende: Ana Gómez', ubicacion: 'Kiosco Central', precio: 45, categoria: 'Comida' },
-    { id: 3, nombre: 'Rebanada de Pizza', tienda: 'Vende: Luis', ubicacion: 'Canchas', precio: 25, categoria: 'Comida' },
-    { id: 4, nombre: 'Fresas con Crema', tienda: 'Vende: María', ubicacion: 'Entrada Principal', precio: 45, categoria: 'Postres' },
-    { id: 5, nombre: 'Tartaletas de Frutas', tienda: 'Vende: Sofía', ubicacion: 'Edificio D', precio: 30, categoria: 'Postres' },
-    { id: 6, nombre: 'Memoria USB 32GB', tienda: 'Vende: Carlos', ubicacion: 'Biblioteca', precio: 120, categoria: 'Tecnología' },
-    { id: 7, nombre: 'Paquete 5 Folders', tienda: 'Vende: Diana', ubicacion: 'Biblioteca', precio: 15, categoria: 'Papelería' },
-    { id: 8, nombre: 'Coca-Cola 600ml', tienda: 'Vende: Juan Pérez', ubicacion: 'Edificio L', precio: 20, categoria: 'Bebidas' },
-    { id: 9, nombre: 'Arizona de Sandía', tienda: 'Vende: Luis', ubicacion: 'Canchas', precio: 25, categoria: 'Bebidas' },
-    { id: 10, nombre: 'Electrolit Fresa', tienda: 'Vende: Ana Gómez', ubicacion: 'Kiosco Central', precio: 32, categoria: 'Bebidas' },
-    { id: 11, nombre: 'Doritos Nacho', tienda: 'Vende: Pedro', ubicacion: 'Pasillo Central', precio: 18, categoria: 'Sabritas' },
-    { id: 12, nombre: 'Picafresas (10pz)', tienda: 'Vende: María', ubicacion: 'Entrada Principal', precio: 15, categoria: 'Dulces' },
-  ];
+  const imagenCategoria = (categoria) => {
+    const texto = categoria.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    if (texto.includes('comida') || texto.includes('alimento')) return imgComida;
+    if (texto.includes('postre') || texto.includes('reposteria')) return imgPostres;
+    if (texto.includes('bebida') || texto.includes('agua')) return imgBebidas;
+    if (texto.includes('papeleria')) return imgPapeleria;
+    if (texto.includes('tecnologia')) return imgTecnologia;
+    if (texto.includes('botana') || texto.includes('sabrita') || texto.includes('snack')) return imgSabritas;
+    if (texto.includes('dulce')) return imgDulces;
+    return imgTodo;
+  };
 
   const categoriasMenu = [
     { id: 'Todo', img: imgTodo },
-    { id: 'Comida', img: imgComida },
-    { id: 'Postres', img: imgPostres },
-    { id: 'Bebidas', img: imgBebidas },
-    { id: 'Sabritas', img: imgSabritas },
-    { id: 'Dulces', img: imgDulces },
-    { id: 'Papelería', img: imgPapeleria },
-    { id: 'Tecnología', img: imgTecnologia },
+    ...[...new Set(productos.map((producto) => producto.categoria).filter(Boolean))]
+      .map((categoria) => ({ id: categoria, img: imagenCategoria(categoria) })),
   ];
 
-  const productosFiltrados = todosLosProductos.filter(producto => {
+  const productosFiltrados = productos.filter(producto => {
     const coincideCategoria = categoriaActiva === 'Todo' || producto.categoria === categoriaActiva;
     const coincideBusqueda = producto.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
                              producto.tienda.toLowerCase().includes(busqueda.toLowerCase());
@@ -65,16 +57,16 @@ const HomeComprador = ({ irAPedidos, irAPerfil, carrito = {}, setCarrito = () =>
 
   const realizarPago = () => {
     const itemsComprados = Object.entries(carrito).map(([id, cantidad]) => {
-      const prod = todosLosProductos.find(p => p.id === parseInt(id));
-      return { ...prod, cantidad };
-    });
-    irAPedidos(itemsComprados);
+      const prod = productos.find(p => String(p.id) === id);
+      return prod ? { ...prod, cantidad } : null;
+    }).filter(Boolean);
+    if (itemsComprados.length > 0) irAPedidos(itemsComprados);
   };
 
   const totalArticulos = Object.values(carrito).reduce((a, b) => a + b, 0);
   const totalPrecio = Object.entries(carrito).reduce((total, [id, cantidad]) => {
-    const producto = todosLosProductos.find(p => p.id === parseInt(id));
-    return total + (producto.precio * cantidad);
+    const producto = productos.find(p => String(p.id) === id);
+    return total + (producto ? producto.precio * cantidad : 0);
   }, 0);
 
   return (
@@ -129,13 +121,24 @@ const HomeComprador = ({ irAPedidos, irAPerfil, carrito = {}, setCarrito = () =>
           <h2 className="font-black text-sm mt-4 mb-4 font-serif tracking-wider">Disponible por ahora</h2>
           <div className="flex flex-col gap-4">
 
-            {productosFiltrados.length === 0 && (
+            {cargandoProductos && (
+              <p className="text-center text-gray-400 text-sm mt-4">Cargando productos...</p>
+            )}
+
+            {!cargandoProductos && errorProductos && (
+              <div className="text-center text-gray-500 text-sm mt-4">
+                <p>{errorProductos}</p>
+                <button onClick={recargarProductos} className="text-[#0A3895] font-bold mt-2">Reintentar</button>
+              </div>
+            )}
+
+            {!cargandoProductos && !errorProductos && productosFiltrados.length === 0 && (
               <p className="text-center text-gray-400 text-sm mt-4">No se encontraron productos o vendedores.</p>
             )}
 
             {productosFiltrados.map((producto) => (
               <div key={producto.id} className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 flex items-center gap-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setProductoSeleccionado(producto)}>
-                <div className="w-16 h-16 bg-gray-200 rounded-xl flex items-center justify-center text-gray-400 text-xs font-bold shrink-0">IMG</div>
+                <div className="w-16 h-16 bg-gray-200 rounded-xl flex items-center justify-center text-gray-400 text-xs font-bold shrink-0 overflow-hidden">{producto.imagen_url ? <img src={producto.imagen_url} alt={producto.nombre} className="w-full h-full object-cover" /> : 'IMG'}</div>
                 <div className="flex-1">
                   <h3 className="font-bold text-sm text-gray-800 leading-tight">{producto.nombre}</h3>
                   <p className="text-gray-400 text-[10px] mt-0.5">{producto.tienda}</p>
@@ -185,7 +188,7 @@ const HomeComprador = ({ irAPedidos, irAPerfil, carrito = {}, setCarrito = () =>
             <div className="bg-white w-full rounded-t-[30px] p-6 pb-8 relative z-10 animate-[slideUp_0.3s_ease-out]">
               <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6"></div>
               <div className="flex gap-4 items-center mb-6">
-                <div className="w-20 h-20 bg-gray-200 rounded-xl flex items-center justify-center text-gray-400 text-xs font-bold shrink-0">IMG</div>
+                <div className="w-20 h-20 bg-gray-200 rounded-xl flex items-center justify-center text-gray-400 text-xs font-bold shrink-0 overflow-hidden">{productoSeleccionado.imagen_url ? <img src={productoSeleccionado.imagen_url} alt={productoSeleccionado.nombre} className="w-full h-full object-cover" /> : 'IMG'}</div>
                 <div>
                   <h2 className="text-lg font-black text-gray-900 leading-tight">{productoSeleccionado.nombre}</h2>
                   <p className="text-[#FF8C00] font-black text-xl mt-1">${productoSeleccionado.precio}</p>
