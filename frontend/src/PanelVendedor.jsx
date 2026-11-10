@@ -50,6 +50,7 @@ const PanelVendedor = ({
   const [pedidoACancelar, setPedidoACancelar] = useState(null);
   const [notaCancelacion, setNotaCancelacion] = useState('');
   const [errorCancelacion, setErrorCancelacion] = useState('');
+  const [errorAccionPedido, setErrorAccionPedido] = useState('');
 
   const alternarCeldaHorario = (dia, bloque) => {
     const clave = `${dia}_${bloque}`;
@@ -154,6 +155,7 @@ const PanelVendedor = ({
 
   // Abrir panel cuando el vendedor da clic en un pedido para aceptarlo o declinarlo
   const abrirPanelGestionPedido = (pedido) => {
+    setErrorAccionPedido('');
     setPedidoSeleccionado(pedido);
     setModoEntrega(pedido.requiereRepartidor ? 'repartidor' : 'propio');
     setCostoParaRepartidor(String(pedido.total || ''));
@@ -168,20 +170,25 @@ const PanelVendedor = ({
     if (!pedidoSeleccionado) return;
 
     const necesitaRep = modoEntrega === 'repartidor';
-    await configurarAceptacionPedido(pedidoSeleccionado.id, {
-      estado: 'En preparación',
-      requiereRepartidor: necesitaRep,
-      costoProductoRepartidor: necesitaRep ? parseFloat(costoParaRepartidor || pedidoSeleccionado.total) : pedidoSeleccionado.total,
-      lugarRecoleccion: necesitaRep ? dondeRecogeRepartidor.trim() : '',
-      puntoEntrega: necesitaRep ? dondeDejaRepartidor.trim() : pedidoSeleccionado.puntoEntrega,
-      comisionRepartidor: necesitaRep ? parseFloat(comisionRepartidor || 10) : 0
-    });
-
-    setPedidoSeleccionado(null);
-    setModalActivo(null);
+    setErrorAccionPedido('');
+    try {
+      await configurarAceptacionPedido(pedidoSeleccionado.id, {
+        estado: 'En preparación',
+        requiereRepartidor: necesitaRep,
+        costoProductoRepartidor: necesitaRep ? parseFloat(costoParaRepartidor || pedidoSeleccionado.total) : pedidoSeleccionado.total,
+        lugarRecoleccion: necesitaRep ? dondeRecogeRepartidor.trim() : '',
+        puntoEntrega: necesitaRep ? dondeDejaRepartidor.trim() : pedidoSeleccionado.puntoEntrega,
+        comisionRepartidor: necesitaRep ? parseFloat(comisionRepartidor || 10) : 0
+      });
+      setPedidoSeleccionado(null);
+      setModalActivo(null);
+    } catch (error) {
+      setErrorAccionPedido(error.message || 'No se pudo confirmar el pedido en Supabase.');
+    }
   };
 
   const abrirModalCancelar = (pedido) => {
+    setErrorAccionPedido('');
     setPedidoACancelar(pedido);
     setNotaCancelacion('');
     setErrorCancelacion('');
@@ -195,10 +202,23 @@ const PanelVendedor = ({
       return;
     }
 
-    await cambiarEstadoPedidoVendedor(pedidoACancelar.id, 'Cancelado', notaCancelacion.trim());
-    setPedidoACancelar(null);
-    setNotaCancelacion('');
-    setModalActivo(null);
+    try {
+      await cambiarEstadoPedidoVendedor(pedidoACancelar.id, 'Cancelado', notaCancelacion.trim());
+      setPedidoACancelar(null);
+      setNotaCancelacion('');
+      setModalActivo(null);
+    } catch (error) {
+      setErrorCancelacion(error.message || 'No se pudo cancelar el pedido en Supabase.');
+    }
+  };
+
+  const manejarCambioEstadoPedido = async (pedidoId, estado) => {
+    setErrorAccionPedido('');
+    try {
+      await cambiarEstadoPedidoVendedor(pedidoId, estado, '');
+    } catch (error) {
+      setErrorAccionPedido(error.message || 'No se pudo guardar el nuevo estado.');
+    }
   };
 
   const pedidosPendientesCount = pedidosVendedor.filter(
@@ -375,6 +395,7 @@ const PanelVendedor = ({
 
               {cargandoPedidos && <p className="text-xs text-gray-500 mb-3">Consultando pedidos en Supabase...</p>}
               {errorPedidos && <p role="alert" className="text-red-600 text-xs mb-3">{errorPedidos}</p>}
+              {errorAccionPedido && <p role="alert" className="text-red-600 text-xs mb-3">{errorAccionPedido}</p>}
               {pedidosVendedor.length === 0 ? (
                 !cargandoPedidos && !errorPedidos && (
                 <div className="bg-white rounded-3xl p-6 text-center border border-gray-100">
@@ -517,7 +538,7 @@ const PanelVendedor = ({
                             </p>
                             <div className="grid grid-cols-3 gap-1.5">
                               <button
-                                onClick={() => cambiarEstadoPedidoVendedor(ped.id, 'En preparación', '')}
+                                onClick={() => manejarCambioEstadoPedido(ped.id, 'En preparación')}
                                 className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${
                                   ped.estado === 'En preparación'
                                     ? 'bg-[#0A3895] text-white border-[#0A3895]'
@@ -527,7 +548,7 @@ const PanelVendedor = ({
                                 👨‍🍳 Preparando
                               </button>
                               <button
-                                onClick={() => cambiarEstadoPedidoVendedor(ped.id, 'En camino', '')}
+                                onClick={() => manejarCambioEstadoPedido(ped.id, 'En camino')}
                                 className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${
                                   ped.estado === 'En camino'
                                     ? 'bg-[#FF8C00] text-white border-[#FF8C00]'
@@ -537,7 +558,7 @@ const PanelVendedor = ({
                                 🏃‍♂️ En camino
                               </button>
                               <button
-                                onClick={() => cambiarEstadoPedidoVendedor(ped.id, 'En el punto de entrega', '')}
+                                onClick={() => manejarCambioEstadoPedido(ped.id, 'En el punto de entrega')}
                                 className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${
                                   ped.estado === 'En el punto de entrega'
                                     ? 'bg-[#22C55E] text-white border-[#22C55E]'
@@ -556,7 +577,7 @@ const PanelVendedor = ({
                                 Cancelar con nota
                               </button>
                               <button
-                                onClick={() => cambiarEstadoPedidoVendedor(ped.id, 'Entregado', '')}
+                                onClick={() => manejarCambioEstadoPedido(ped.id, 'Entregado')}
                                 className="flex-1 bg-[#22C55E] hover:bg-[#16a34a] text-white font-black text-xs py-2.5 rounded-xl shadow-sm"
                               >
                                 ✓ Marcar Entregado
@@ -638,6 +659,7 @@ const PanelVendedor = ({
               Solicitado por <span className="font-bold text-gray-800">{pedidoSeleccionado.compradorNombre}</span>. Confirma si aceptas el pedido y cómo lo entregarás.
             </p>
 
+            {errorAccionPedido && <p role="alert" className="text-red-600 text-xs font-bold mb-2">{errorAccionPedido}</p>}
             <form onSubmit={confirmarAceptacionPedido} className="flex flex-col gap-3.5">
               {/* Selector: ¿Lo llevas tú o necesitas Repartidor? */}
               <div>

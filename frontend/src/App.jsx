@@ -194,10 +194,36 @@ function App() {
     });
   };
 
-  // Cuando el vendedor acepta un pedido y configura si lo lleva él o un repartidor
+  const guardarEstadoEnSupabase = async (pedidoId, estado) => {
+    const token = localStorage.getItem('campy_token') || tokenAuth;
+    if (!token) throw new Error('Tu sesión ha caducado. Inicia sesión nuevamente.');
+    const respuesta = await fetch(`${API_URL}/api/pedidos/${pedidoId}/estado`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ estado })
+    });
+    const datos = await respuesta.json().catch(() => ({}));
+    if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo guardar el estado en Supabase.');
+    return datos.pedido;
+  };
+
+  // Primero confirmar en Supabase; actualizar la pantalla solo si la BD respondió correctamente.
   const configurarAceptacionPedido = async (pedidoId, config) => {
+    const pedidoGuardado = await guardarEstadoEnSupabase(pedidoId, 'En preparación');
     setPedidosParaVendedor((prev) =>
-      prev.map((p) => (p.id === pedidoId ? { ...p, ...config } : p))
+      prev.map((p) => (p.id === pedidoId ? { ...p, ...config, estado: pedidoGuardado.estado } : p))
+    );
+  };
+
+  const cambiarEstadoPedidoVendedor = async (pedidoId, nuevoEstado, notaCancelacion = '') => {
+    const pedidoGuardado = await guardarEstadoEnSupabase(pedidoId, nuevoEstado);
+    setPedidosParaVendedor((prev) =>
+      prev.map((p) => p.id === pedidoId
+        ? { ...p, estado: pedidoGuardado.estado, notaCancelacion: notaCancelacion || p.notaCancelacion }
+        : p)
+    );
+    setPedidosPorCumplir((prev) =>
+      prev.map((p) => p.id === pedidoId ? { ...p, estado: pedidoGuardado.estado } : p)
     );
   };
 
@@ -213,6 +239,21 @@ function App() {
         ? { ...p, estado: nuevoEstado, notaCancelacion: notaCancelacion || p.notaCancelacion }
         : p)
     );
+  };
+
+  const confirmarRecepcionPedido = async (pedidoId) => {
+    const token = localStorage.getItem('campy_token') || tokenAuth;
+    if (!token) throw new Error('Tu sesión ha caducado. Inicia sesión nuevamente.');
+    const respuesta = await fetch(`${API_URL}/api/pedidos/${pedidoId}/confirmar-recepcion`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const datos = await respuesta.json().catch(() => ({}));
+    if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo confirmar la recepción en Supabase.');
+    setPedidosPorCumplir((prev) =>
+      prev.map((p) => p.id === pedidoId ? { ...p, estado: datos.pedido.estado } : p)
+    );
+    return datos.pedido;
   };
 
   // Cuando un repartidor acepta llevar un pedido disponible
@@ -257,7 +298,7 @@ function App() {
           pedidosVendedor={pedidosPorCumplir}
           cargandoPedidos={cargandoPedidos}
           errorPedidos={errorPedidos}
-          cambiarEstadoPedido={cambiarEstadoPedido}
+          cambiarEstadoPedido={confirmarRecepcionPedido}
           irAInicio={() => setPantallaActual('home')} 
           irAPerfil={() => setPantallaActual('perfil')} 
         />
@@ -300,7 +341,7 @@ function App() {
           cargandoPedidos={cargandoPedidos}
           errorPedidos={errorPedidos}
           configurarAceptacionPedido={configurarAceptacionPedido}
-          cambiarEstadoPedidoVendedor={cambiarEstadoPedido}
+          cambiarEstadoPedidoVendedor={cambiarEstadoPedidoVendedor}
           volverAModoCliente={() => setPantallaActual('home')}
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');

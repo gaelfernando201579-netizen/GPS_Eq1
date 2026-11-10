@@ -42,7 +42,17 @@ export async function crearPedido(req, res) {
     }
     if (typeof horarioEntrega !== 'string' || !Number.isFinite(fechaEntrega.getTime()) ||
       fechaEntrega.getTime() <= Date.now() || fechaEntrega.getTime() > Date.now() + 30 * 86400000) {
-      throw errorCliente('Selecciona una fecha de entrega futura dentro de los próximos 30 días.');
+      throw errorCliente('Selecciona una fecha y hora futuras dentro de los próximos 30 días. Se permite el mismo día si la hora no ha pasado.');
+    }
+    // Los horarios de entrega se interpretan según la hora del ITO (Oaxaca, México).
+    const partesHora = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    }).formatToParts(fechaEntrega);
+    const hora = Number(partesHora.find((parte) => parte.type === 'hour')?.value);
+    const minuto = Number(partesHora.find((parte) => parte.type === 'minute')?.value);
+    const minutosDelDia = hora * 60 + minuto;
+    if (minutosDelDia < 7 * 60 || minutosDelDia > 18 * 60) {
+      throw errorCliente('La hora de entrega debe estar entre las 7:00 a. m. y las 6:00 p. m. (hora de Oaxaca).');
     }
 
     client = await pool.connect();
@@ -220,5 +230,81 @@ export async function cancelarPedido(req, res) {
   } catch (error) {
     console.error('Error al cancelar pedido:', error);
     return res.status(500).json({ mensaje: 'No se pudo cancelar el pedido.' });
+  }
+}
+
+
+// Los cambios que hace un vendedor deben persistir en la BD, no solo en React.
+export async function actualizarEstadoPedidoVendedor(req, res) {
+  const idPedido = Number(req.params.id);
+  const estadoNuevo = req.body?.estado;
+  const estadosPermitidos = ['En preparación', 'En camino', 'En el punto de entrega', 'Entregado', 'Cancelado'];
+  if (!Number.isSafeInteger(idPedido) || idPedido <= 0 || !estadosPermitidos.includes(estadoNuevo)) {
+    return res.status(400).json({ mensaje: 'Pedido o estado inválido.' });
+  }
+  if (!Number.isSafeInteger(Number(req.usuario?.id)) || Number(req.usuario.id) <= 0) {
+    return res.status(401).json({ mensaje: 'Debes iniciar sesión.' });
+  }
+  try {
+    const vendedorId = Number(req.usuario.id);
+    const rol = await pool.query(
+      `SELECT 1 FROM public.usuario_roles ur
+       JOIN public.roles r ON r.id_rol = ur.id_rol
+       WHERE ur.id_usuario = $1 AND LOWER(r.nombre) = 'vendedor' LIMIT 1`,
+      [vendedorId]
+    );
+    if (!rol.rowCount) return res.status(403).json({ mensaje: 'Solo un vendedor puede modificar sus pedidos.' });
+
+    const transiciones = {
+      'En preparación': ['Pendiente'],
+      'En camino': ['En preparación'],
+      'En el punto de entrega': ['En camino'],
+      'Entregado': ['En el punto de entrega'],
+      'Cancelado': ['Pendiente', 'En preparación', 'En camino', 'En el punto de entrega']
+    };
+    const resultado = await pool.query(
+      `UPDATE public.pedidos
+       SET estado = $1
+       WHERE id_pedido = $2 AND id_vendedor = $3
+         AND estado = ANY($4::text[])
+       RETURNING id_pedido, estado`,
+      [estadoNuevo, idPedido, vendedorId, transiciones[estadoNuevo]]
+    );
+    if (!resultado.rowCount) {
+      return res.status(409).json({
+        mensaje: 'No fue posible cambiar el estado: el pedido no pertenece a tu cuenta o ya cambió de estado. Recarga los pedidos.'
+      });
+    }
+    return res.json({ mensaje: 'Estado del pedido guardado en Supabase.', pedido: resultado.rows[0] });
+  } catch (error) {
+    console.error('Error actualizando el estado del pedido:', error);
+    return res.status(500).json({ mensaje: 'No se pudo actualizar el pedido en Supabase. Revisa el backend y las restricciones del estado.' });
+  }
+}
+
+
+// Solo el comprador puede confirmar una recepción que realmente ya está lista para entregar.
+export async function confirmarRecepcionComprador(req, res) {
+  const idPedido = Number(req.params.id);
+  if (!Number.isSafeInteger(idPedido) || idPedido <= 0) {
+    return res.status(400).json({ mensaje: 'Pedido inválido.' });
+  }
+  if (!Number.isSafeInteger(Number(req.usuario?.id)) || Number(req.usuario.id) <= 0) {
+    return res.status(401).json({ mensaje: 'Debes iniciar sesión.' });
+  }
+  try {
+    const resultado = await pool.query(
+      `UPDATE public.pedidos SET estado = 'Entregado'
+       WHERE id_pedido = $1 AND id_comprador = $2 AND estado = 'En el punto de entrega'
+       RETURNING id_pedido, estado`,
+      [idPedido, Number(req.usuario.id)]
+    );
+    if (!resultado.rowCount) {
+      return res.status(409).json({ mensaje: 'Solo puedes confirmar la recepción cuando el pedido está en el punto de entrega.' });
+    }
+    return res.json({ mensaje: 'Recepción confirmada y guardada en Supabase.', pedido: resultado.rows[0] });
+  } catch (error) {
+    console.error('Error confirmando recepción del pedido:', error);
+    return res.status(500).json({ mensaje: 'No se pudo guardar la recepción en Supabase.' });
   }
 }

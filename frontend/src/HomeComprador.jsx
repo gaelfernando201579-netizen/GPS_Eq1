@@ -14,6 +14,7 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
   const [categoriaActiva, setCategoriaActiva] = useState('Todo');
   const [productoSeleccionado, setProductoSeleccionado] = useState(null);
   const [checkoutAbierto, setCheckoutAbierto] = useState(false);
+  const [carritoAbierto, setCarritoAbierto] = useState(false);
   const [puntoEntrega, setPuntoEntrega] = useState('');
   const [horarioEntrega, setHorarioEntrega] = useState('');
   const [guardandoPedido, setGuardandoPedido] = useState(false);
@@ -60,15 +61,54 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
     });
   };
 
+  const abrirCarrito = () => {
+    setCarritoAbierto(true);
+  };
+
   const realizarPago = () => {
     if (Object.values(carrito).some((cantidad) => Number(cantidad) > 0)) {
       setErrorPedido('');
+      setCarritoAbierto(false);
       setCheckoutAbierto(true);
     }
   };
 
+  const aFechaHoraLocal = (fecha) => {
+    const ajustada = new Date(fecha.getTime() - fecha.getTimezoneOffset() * 60000);
+    return ajustada.toISOString().slice(0, 16);
+  };
+
+  const validarFechaEntrega = (valor) => {
+    const fecha = new Date(valor);
+    const ahora = new Date();
+    if (!valor || !Number.isFinite(fecha.getTime())) {
+      return 'Selecciona una fecha y hora de entrega válidas.';
+    }
+    if (fecha <= ahora) {
+      return 'Selecciona una fecha y hora que todavía no hayan pasado. Puedes elegir hoy si la hora es futura.';
+    }
+    if (fecha.getTime() > ahora.getTime() + 30 * 24 * 60 * 60 * 1000) {
+      return 'Selecciona una fecha dentro de los próximos 30 días.';
+    }
+    const minutos = fecha.getHours() * 60 + fecha.getMinutes();
+    if (minutos < 7 * 60 || minutos > 18 * 60) {
+      return 'Solo puedes elegir horarios de entrega entre las 7:00 a. m. y las 6:00 p. m.';
+    }
+    return '';
+  };
+
+  const cambiarHorarioEntrega = (valor) => {
+    setHorarioEntrega(valor);
+    setErrorPedido(valor.length >= 16 ? validarFechaEntrega(valor) : '');
+  };
+
   const confirmarPedido = async (evento) => {
     evento.preventDefault();
+    const errorFecha = validarFechaEntrega(horarioEntrega);
+    if (errorFecha) {
+      setErrorPedido(errorFecha);
+      return;
+    }
     setErrorPedido('');
     const itemsComprados = Object.entries(carrito).map(([id, cantidad]) => {
       const producto = productos.find((p) => String(p.id) === id);
@@ -121,7 +161,7 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
             <span className="text-gray-400 text-lg font-bold">Q</span>
           </div>
           
-          <div onClick={realizarPago} className="relative bg-white w-12 h-12 flex items-center justify-center rounded-full shadow-lg border border-gray-100 border-b-4 border-b-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
+          <div onClick={abrirCarrito} className="relative bg-white w-12 h-12 flex items-center justify-center rounded-full shadow-lg border border-gray-100 border-b-4 border-b-gray-200 cursor-pointer hover:bg-gray-50 transition-colors">
             <img src={imgCarrito} alt="Carrito" className="w-6 h-6 object-contain opacity-70" />
             {totalArticulos > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">{totalArticulos}</span>}
           </div>
@@ -192,7 +232,7 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
 
         {totalArticulos > 0 && (
           <div className="absolute bottom-[88px] w-full px-6 z-30 animate-[slideUp_0.3s_ease-out]">
-            <button onClick={realizarPago} className="w-full bg-[#0A3895] hover:bg-[#082b75] text-white font-bold py-3.5 px-5 rounded-2xl shadow-xl shadow-blue-900/30 flex justify-between items-center transition-transform active:scale-95">
+            <button onClick={abrirCarrito} className="w-full bg-[#0A3895] hover:bg-[#082b75] text-white font-bold py-3.5 px-5 rounded-2xl shadow-xl shadow-blue-900/30 flex justify-between items-center transition-transform active:scale-95">
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 w-7 h-7 rounded-full flex items-center justify-center text-xs">{totalArticulos}</div>
                 <span>Ver carrito / Pagar</span>
@@ -207,9 +247,55 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
             <div className="bg-[#0A3895] w-12 h-12 rounded-full flex items-center justify-center shadow-lg -mt-5 border-4 border-white text-white text-xl">🏠</div>
             <span className="text-[#0A3895] text-[10px] font-bold mt-1">Inicio</span>
           </div>
-          <div onClick={realizarPago} className="flex flex-col items-center opacity-40 cursor-pointer pb-1 hover:opacity-80"><span className="text-2xl mb-1">🛍️</span></div>
+          <button type="button" onClick={abrirCarrito} aria-label="Ver carrito de compras" className="flex flex-col items-center opacity-40 cursor-pointer pb-1 hover:opacity-80"><span className="text-2xl mb-1">🛍️</span></button>
           <div onClick={irAPerfil} className="flex flex-col items-center opacity-40 cursor-pointer pb-1 hover:opacity-80"><span className="text-2xl mb-1">👤</span></div>
         </div>
+
+        {carritoAbierto && (
+          <div className="absolute inset-0 z-[55] flex items-end justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setCarritoAbierto(false)} />
+            <div className="relative bg-white w-full rounded-t-[30px] p-6 pb-8 shadow-xl max-h-[85%] overflow-y-auto space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="font-black text-lg text-[#0A3895]">Mi carrito de compras</h2>
+                <button type="button" onClick={() => setCarritoAbierto(false)} className="font-bold text-gray-400">Cerrar ✕</button>
+              </div>
+              {totalArticulos === 0 ? (
+                <div className="py-8 text-center space-y-3">
+                  <p className="text-4xl">🛍️</p>
+                  <p className="font-bold text-gray-800">Tu carrito está vacío</p>
+                  <p className="text-sm text-gray-500">Agrega productos desde Inicio para realizar tu pedido.</p>
+                  <button type="button" onClick={() => setCarritoAbierto(false)} className="mt-3 w-full bg-[#0A3895] text-white font-bold py-3 rounded-xl">Explorar productos</button>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    {Object.entries(carrito).filter(([, cantidad]) => Number(cantidad) > 0).map(([id, cantidad]) => {
+                      const producto = productos.find((p) => String(p.id) === String(id));
+                      return (
+                        <div key={id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-sm text-gray-800 truncate">{producto?.nombre || 'Producto no disponible'}</p>
+                            <p className="text-xs text-gray-500">{producto ? `$${(Number(producto.precio) * Number(cantidad)).toFixed(2)}` : 'Actualiza el catálogo'}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button type="button" aria-label="Quitar una unidad" onClick={(e) => manejarCantidad(e, id, -1)} className="bg-white border border-gray-200 text-gray-800 w-8 h-8 rounded-full font-bold">−</button>
+                            <span className="text-sm font-bold text-gray-800 min-w-4 text-center">{cantidad}</span>
+                            <button type="button" aria-label="Agregar una unidad" onClick={(e) => manejarCantidad(e, id, 1)} className="bg-[#FF8C00] text-white w-8 h-8 rounded-full font-bold">+</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex justify-between items-center border-t border-gray-200 pt-4">
+                    <span className="font-bold text-gray-700">Total ({totalArticulos} productos)</span>
+                    <span className="font-black text-lg text-[#FF8C00]">${totalPrecio.toFixed(2)}</span>
+                  </div>
+                  <button type="button" onClick={realizarPago} className="w-full bg-[#FF8C00] text-white font-black py-3.5 rounded-xl">Continuar al pedido</button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {checkoutAbierto && (
           <div className="absolute inset-0 z-[60] flex items-end justify-center">
@@ -226,7 +312,8 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
               </label>
               <label className="block text-xs font-bold text-gray-700">
                 Fecha y hora solicitada para la entrega
-                <input type="datetime-local" value={horarioEntrega} onChange={(e) => setHorarioEntrega(e.target.value)} required className="w-full mt-2 border border-gray-200 rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-orange-400" />
+                <input type="datetime-local" value={horarioEntrega} min={aFechaHoraLocal(new Date(Math.ceil(Date.now() / 60000) * 60000))} max={aFechaHoraLocal(new Date(Date.now() + 30 * 86400000))} onChange={(e) => cambiarHorarioEntrega(e.target.value)} required className="w-full mt-2 border border-gray-200 rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-orange-400" />
+                <span className="block mt-1 text-[11px] text-gray-500">Puedes elegir hoy si la hora aún no ha pasado. Horario: 7:00 a. m. a 6:00 p. m. (máximo 30 días).</span>
               </label>
               <p className="text-xs text-gray-500">El envío del pedido no realiza ningún cobro. El vendedor debe confirmar la entrega.</p>
               {errorPedido && <p role="alert" className="text-xs text-red-600 font-bold">{errorPedido}</p>}

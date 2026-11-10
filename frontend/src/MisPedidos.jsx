@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
 
 const ETAPAS = [
@@ -9,6 +9,20 @@ const ETAPAS = [
 ];
 
 const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedidos = false, errorPedidos = '', cambiarEstadoPedido }) => {
+  const [errorConfirmacion, setErrorConfirmacion] = useState('');
+  const [confirmandoId, setConfirmandoId] = useState(null);
+
+  const confirmarPedidoRecibido = async (id) => {
+    setErrorConfirmacion('');
+    setConfirmandoId(id);
+    try {
+      await cambiarEstadoPedido(id, 'Entregado');
+    } catch (error) {
+      setErrorConfirmacion(error.message || 'No se pudo confirmar la recepción.');
+    } finally {
+      setConfirmandoId(null);
+    }
+  };
   const obtenerIndiceEtapa = (estado) => {
     if (estado === 'Pendiente') return -1;
     if (estado === 'En preparación' || estado === 'Aceptado') return 0;
@@ -34,6 +48,7 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedido
 
           {cargandoPedidos && <p className="text-center text-gray-500 text-sm mb-3">Consultando pedidos en Supabase...</p>}
           {errorPedidos && <p role="alert" className="text-red-600 text-sm mb-3">{errorPedidos}</p>}
+          {errorConfirmacion && <p role="alert" className="text-red-600 text-sm mb-3">{errorConfirmacion}</p>}
           {!cargandoPedidos && !errorPedidos && pedidosVendedor.length === 0 && (
             <div className="text-center bg-gray-50 p-6 rounded-3xl border border-gray-100">
               <span className="text-4xl mb-2 block">🛒</span>
@@ -195,12 +210,13 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedido
                   </div>
                 )}
 
-                {!estaCancelado && !estaEntregado && (
+                {estaEnElPunto && !estaCancelado && !estaEntregado && (
                   <button
-                    onClick={() => cambiarEstadoPedido && cambiarEstadoPedido(entrega.id, 'Entregado')}
-                    className="w-full bg-[#FF8C00] hover:bg-[#e67e00] text-white font-black text-xs py-3 rounded-xl shadow-md transition-colors"
+                    onClick={() => confirmarPedidoRecibido(entrega.id)}
+                    disabled={confirmandoId === entrega.id}
+                    className="w-full bg-[#FF8C00] hover:bg-[#e67e00] text-white font-black text-xs py-3 rounded-xl shadow-md transition-colors disabled:opacity-50"
                   >
-                    Confirmar que ya recibí mi pedido
+                    {confirmandoId === entrega.id ? 'Guardando recepción...' : 'Confirmar que ya recibí mi pedido'}
                   </button>
                 )}
               </div>
