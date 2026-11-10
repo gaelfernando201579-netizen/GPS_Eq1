@@ -8,49 +8,6 @@ import PanelRepartidor from './PanelRepartidor';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-const PEDIDOS_INICIALES = [
-  {
-    id: 48201,
-    tienda: 'Vende: Juan Pérez',
-    compradorNombre: 'Dalia Montserrat Caballero Silva',
-    compradorCarrera: 'Ing. Sistemas Computacionales',
-    lugarRecoleccion: 'Kiosco Central',
-    puntoEntrega: 'Edificio L - Salón L3',
-    hora: '10:30 AM',
-    metodoPago: 'Efectivo',
-    estado: 'Pendiente',
-    requiereRepartidor: false,
-    repartidorAsignado: null,
-    costoProductoRepartidor: 70,
-    comisionRepartidor: 10,
-    notaCancelacion: '',
-    total: 70,
-    items: [
-      { nombre: 'Pay de Limón Casero', cantidad: 2, precio: 35 }
-    ]
-  },
-  {
-    id: 48209,
-    tienda: 'Vende: Ana Gómez',
-    compradorNombre: 'Gael Fernando Ortíz Pérez',
-    compradorCarrera: 'Ing. Sistemas Computacionales',
-    lugarRecoleccion: 'Mesas de Kiosco Central',
-    puntoEntrega: 'Bancas de Biblioteca Central',
-    hora: '11:15 AM',
-    metodoPago: 'Transferencia',
-    estado: 'En preparación',
-    requiereRepartidor: true,
-    repartidorAsignado: null,
-    costoProductoRepartidor: 45,
-    comisionRepartidor: 12,
-    notaCancelacion: '',
-    total: 45,
-    items: [
-      { nombre: 'Croissant Preparado', cantidad: 1, precio: 45 }
-    ]
-  }
-];
-
 function App() {
   const [pantallaActual, setPantallaActual] = useState('login');
   const [tokenAuth, setTokenAuth] = useState(localStorage.getItem('campy_token') || null);
@@ -69,7 +26,7 @@ function App() {
   const [errorProductos, setErrorProductos] = useState('');
   const [recargaCatalogo, setRecargaCatalogo] = useState(0);
   const [carritoGlobal, setCarritoGlobal] = useState({});
-  const [pedidosPorCumplir, setPedidosPorCumplir] = useState(PEDIDOS_INICIALES);
+  const [pedidosPorCumplir, setPedidosPorCumplir] = useState([]);
 
   useEffect(() => {
     let vigente = true;
@@ -121,11 +78,17 @@ function App() {
         id_usuario: datosUsuario.id_usuario,
         esVendedor: datosUsuario.esVendedor === true,
         datosVendedor: null,
-        esRepartidor: false,
+        esRepartidor: datosUsuario.esRepartidor === true,
         datosRepartidor: null
       }));
     }
-    setPantallaActual(datosUsuario?.esVendedor === true ? 'vendedor' : 'home');
+    setPantallaActual(
+      datosUsuario?.esVendedor === true
+        ? 'vendedor'
+        : datosUsuario?.esRepartidor === true
+          ? 'repartidor'
+          : 'home'
+    );
     setRecargaCatalogo((n) => n + 1);
   };
 
@@ -279,7 +242,9 @@ function App() {
           actualizarDatosVendedor={(nuevosDatos) =>
             setUsuarioActual((prev) => ({ ...prev, datosVendedor: nuevosDatos }))
           }
-          misProductos={productosCatalogo.filter((p) => p.esMio)}
+          misProductos={productosCatalogo.filter(
+            (p) => Number(p.id_vendedor) === Number(usuarioActual.id_usuario)
+          )}
           agregarNuevoProducto={agregarNuevoProducto}
           editarProducto={editarProducto}
           eliminarProducto={eliminarProducto}

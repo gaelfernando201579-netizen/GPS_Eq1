@@ -74,17 +74,16 @@ export async function login(req, res) {
       return res.status(500).json({ mensaje: 'Autenticación no configurada' });
     }
 
-    const consultaRol = await pool.query(
-      `SELECT EXISTS (
-         SELECT 1
-         FROM public.usuario_roles ur
-         JOIN public.roles r ON r.id_rol = ur.id_rol
-         WHERE ur.id_usuario = $1
-           AND LOWER(TRIM(r.nombre)) = 'vendedor'
-       ) AS es_vendedor`,
+    const consultaRoles = await pool.query(
+      `SELECT LOWER(TRIM(r.nombre)) AS nombre
+       FROM public.usuario_roles ur
+       JOIN public.roles r ON r.id_rol = ur.id_rol
+       WHERE ur.id_usuario = $1`,
       [usuario.id_usuario]
     );
-    const esVendedor = consultaRol.rows[0]?.es_vendedor === true;
+    const roles = consultaRoles.rows.map((fila) => fila.nombre);
+    const esVendedor = roles.includes('vendedor');
+    const esRepartidor = roles.includes('repartidor');
 
     const token = jwt.sign(
       { id: usuario.id_usuario, correo: usuario.correo },
@@ -99,7 +98,8 @@ export async function login(req, res) {
         id_usuario: usuario.id_usuario,
         nombre: usuario.nombre,
         correo: usuario.correo,
-        esVendedor
+        esVendedor,
+        esRepartidor
       }
     });
   } catch (error) {
