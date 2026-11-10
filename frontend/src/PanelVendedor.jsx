@@ -19,7 +19,7 @@ const PanelVendedor = ({
   volverAModoCliente,
   cerrarSesion
 }) => {
-  const [tabActiva, setTabActiva] = useState('perfil');
+  const [tabActiva, setTabActiva] = useState('productos');
   const [modalActivo, setModalActivo] = useState(null);
 
   // Estados para crear / editar producto
@@ -240,7 +240,7 @@ const PanelVendedor = ({
                 </span>
               </div>
               <p className="text-white/80 text-[11px] mt-0.5 font-medium">
-                {tabActiva === 'perfil' ? 'Mi Perfil y Mis Productos' : 'Pedidos por Cumplir'}
+                {tabActiva === 'productos' ? 'Mis Productos' : tabActiva === 'pedidos' ? 'Pedidos por Cumplir' : 'Mi cuenta'}
               </p>
             </div>
             <img src={logoCampy} alt="Logo" className="w-12 h-auto drop-shadow-md" />
@@ -256,36 +256,9 @@ const PanelVendedor = ({
         {/* CONTENIDO DINÁMICO SEGÚN PESTAÑA */}
         <div className="flex-1 overflow-y-auto pb-32 px-5 z-10 -mt-2 hide-scrollbar">
           
-          {/* ================= APARTADO 1: MI PERFIL (LIMPIO SIN HORARIOS EN LA TARJETA) ================= */}
-          {tabActiva === 'perfil' && (
+          {/* ================= APARTADO 1: MIS PRODUCTOS ================= */}
+          {tabActiva === 'productos' && (
             <>
-              <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100 mb-5">
-                <div className="flex justify-between items-start gap-3">
-                  <div className="flex gap-3 items-center">
-                    <div className="w-14 h-14 bg-orange-50 text-[#FF8C00] rounded-2xl flex items-center justify-center text-2xl font-black border border-orange-100 shrink-0">
-                      🏪
-                    </div>
-                    <div>
-                      <span className="bg-green-100 text-green-700 text-[9px] font-black uppercase px-2 py-0.5 rounded-full">
-                        Tienda Activa • ID {usuario?.datosVendedor?.identificacion}
-                      </span>
-                      <h2 className="font-black text-base text-gray-900 leading-tight mt-1">
-                        {usuario?.datosVendedor?.nombre || usuario?.nombre}
-                      </h2>
-                      <p className="text-xs text-gray-500 font-medium">
-                        Giro: <span className="text-gray-800 font-bold">{usuario?.datosVendedor?.queVende}</span>
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setModalActivo('editarVendedor')}
-                    className="text-[11px] font-bold text-[#0A3895] bg-blue-50 px-2.5 py-1.5 rounded-xl hover:bg-blue-100 transition-colors shrink-0"
-                  >
-                    Editar Info
-                  </button>
-                </div>
-              </div>
-
               {/* Botón Principal para Agregar Producto */}
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-black text-sm text-gray-900 uppercase tracking-wide">
@@ -364,18 +337,51 @@ const PanelVendedor = ({
                 </div>
               )}
 
+            </>
+          )}
+
+          {/* ================= APARTADO 3: MI CUENTA ================= */}
+          {tabActiva === 'cuenta' && (
+            <>
+              <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100 mb-5">
+                <div className="flex justify-between items-start gap-3">
+                  <div className="flex gap-3 items-center">
+                    <div className="w-14 h-14 bg-orange-50 text-[#FF8C00] rounded-2xl flex items-center justify-center text-2xl font-black border border-orange-100 shrink-0">
+                      🏪
+                    </div>
+                    <div>
+                      <span className="bg-green-100 text-green-700 text-[9px] font-black uppercase px-2 py-0.5 rounded-full">
+                        Tienda Activa • ID {usuario?.datosVendedor?.identificacion}
+                      </span>
+                      <h2 className="font-black text-base text-gray-900 leading-tight mt-1">
+                        {usuario?.datosVendedor?.nombre || usuario?.nombre}
+                      </h2>
+                      <p className="text-xs text-gray-500 font-medium">
+                        Giro: <span className="text-gray-800 font-bold">{usuario?.datosVendedor?.queVende}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setModalActivo('editarVendedor')}
+                    className="text-[11px] font-bold text-[#0A3895] bg-blue-50 px-2.5 py-1.5 rounded-xl hover:bg-blue-100 transition-colors shrink-0"
+                  >
+                    Editar Info
+                  </button>
+                </div>
+              </div>
+
               <div className="flex flex-col gap-2.5 mt-4">
                 <button
                   onClick={volverAModoCliente}
                   className="w-full bg-white border border-gray-200 text-gray-600 font-bold text-xs py-3.5 rounded-2xl hover:bg-gray-50 transition-colors"
                 >
-                  🛒 Ir al catálogo como Comprador
+                  🛒 Modo comprador
                 </button>
                 <button
                   onClick={cerrarSesion}
                   className="w-full bg-[#FFF0F0] text-[#FF4D4D] font-bold text-xs py-3.5 rounded-2xl hover:bg-[#FFE5E5] transition-colors border border-[#FFE5E5]"
                 >
-                  Cerrar Sesión
+                  Cerrar sesión
                 </button>
               </div>
             </>
@@ -604,23 +610,23 @@ const PanelVendedor = ({
         </div>
 
         {/* MENÚ INFERIOR EXCLUSIVO DEL VENDEDOR */}
-        <div className="absolute bottom-0 w-full bg-white rounded-t-[30px] shadow-[0_-10px_20px_rgba(0,0,0,0.06)] px-12 py-2 flex justify-around items-end pb-5 z-20">
+        <div className="absolute bottom-0 w-full bg-white rounded-t-[30px] shadow-[0_-10px_20px_rgba(0,0,0,0.06)] px-3 py-2 flex justify-around items-end pb-5 z-20">
           <button
             type="button"
-            onClick={() => setTabActiva('perfil')}
+            onClick={() => setTabActiva('productos')}
             className="flex flex-col items-center cursor-pointer"
           >
             <div
               className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                tabActiva === 'perfil'
+                tabActiva === 'productos'
                   ? 'bg-[#0A3895] shadow-lg -mt-5 border-4 border-white text-white text-xl'
                   : 'text-gray-400 text-2xl'
               }`}
             >
               🏪
             </div>
-            <span className={`text-[10px] font-bold mt-1 ${tabActiva === 'perfil' ? 'text-[#0A3895]' : 'text-gray-400'}`}>
-              Mi Perfil / Productos
+            <span className={`text-[10px] font-bold mt-1 ${tabActiva === 'productos' ? 'text-[#0A3895]' : 'text-gray-400'}`}>
+              Mis productos
             </span>
           </button>
 
@@ -644,7 +650,26 @@ const PanelVendedor = ({
               </span>
             )}
             <span className={`text-[10px] font-bold mt-1 ${tabActiva === 'pedidos' ? 'text-[#0A3895]' : 'text-gray-400'}`}>
-              Pedidos por Cumplir
+              Pedidos
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTabActiva('cuenta')}
+            className="flex flex-col items-center cursor-pointer"
+          >
+            <div
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                tabActiva === 'cuenta'
+                  ? 'bg-[#0A3895] shadow-lg -mt-5 border-4 border-white text-white text-xl'
+                  : 'text-gray-400 text-2xl'
+              }`}
+            >
+              🏠
+            </div>
+            <span className={`text-[10px] font-bold mt-1 ${tabActiva === 'cuenta' ? 'text-[#0A3895]' : 'text-gray-400'}`}>
+              Mi cuenta
             </span>
           </button>
         </div>
