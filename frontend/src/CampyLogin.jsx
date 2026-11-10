@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
+import { supabase } from './config/supabase';
 
 const opcionesCarrera = [
   'Licenciatura en Administración',
@@ -79,23 +80,36 @@ const CampyLogin = ({ alIngresar }) => {
     }
   };
 
-  const iniciarConProveedor = (proveedor) => {
+  const iniciarConProveedor = async (proveedor) => {
     setError('');
     setCargando(true);
-    setTimeout(() => {
-      setCargando(false);
-      alIngresar({
-        nombre: proveedor === 'Google' ? 'Usuario Google ITO' : 'Usuario GitHub ITO',
-        correo: proveedor === 'Google' ? 'google.ito@itoaxaca.edu.mx' : 'github.dev@itoaxaca.edu.mx',
-        carrera: 'Ing. Sistemas Computacionales'
+
+    try {
+      const providerId = proveedor.toLowerCase(); // 'google' o 'github'
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: providerId,
+        options: {
+          // Redirige al usuario de vuelta a la app después de autenticar
+          redirectTo: window.location.origin
+        }
       });
-    }, 500);
+
+      if (error) {
+        throw error;
+      }
+      // El navegador redirigirá automáticamente a la pantalla de login de Google/GitHub
+    } catch (err) {
+      console.error('Error OAuth:', err);
+      setError(err.message || `No se pudo iniciar sesión con ${proveedor}`);
+      setCargando(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center font-sans">
       <div className="w-full max-w-[400px] min-h-screen sm:min-h-[780px] bg-[#0A3895] relative flex flex-col shadow-2xl sm:rounded-2xl overflow-hidden">
-        
+
         {/* Onda decorativa original */}
         <div className="absolute top-0 left-0 w-full opacity-30 pointer-events-none">
           <svg viewBox="0 0 1440 320" className="w-full h-auto">
@@ -104,13 +118,13 @@ const CampyLogin = ({ alIngresar }) => {
         </div>
 
         <div className="flex-1 flex flex-col items-center px-8 relative z-10 pt-12 pb-6">
-          
+
           {/* Logo Campy */}
           <div className="flex flex-col items-center mb-6">
-            <img 
-              src={logoCampy} 
-              alt="Logo Campy" 
-              className="w-32 h-auto drop-shadow-2xl mb-2" 
+            <img
+              src={logoCampy}
+              alt="Logo Campy"
+              className="w-32 h-auto drop-shadow-2xl mb-2"
             />
             <p className="text-white font-bold tracking-[0.15em] text-[10px] uppercase opacity-90">
               CAMPUS DELIVERY ITO
@@ -122,18 +136,16 @@ const CampyLogin = ({ alIngresar }) => {
             <button
               type="button"
               onClick={() => { setModoRegistro(false); setError(''); }}
-              className={`flex-1 py-2 rounded-full text-xs font-bold transition-all ${
-                !modoRegistro ? 'bg-[#FF8C00] text-white shadow-md' : 'text-white/70 hover:text-white'
-              }`}
+              className={`flex-1 py-2 rounded-full text-xs font-bold transition-all ${!modoRegistro ? 'bg-[#FF8C00] text-white shadow-md' : 'text-white/70 hover:text-white'
+                }`}
             >
               Iniciar Sesión
             </button>
             <button
               type="button"
               onClick={() => { setModoRegistro(true); setError(''); }}
-              className={`flex-1 py-2 rounded-full text-xs font-bold transition-all ${
-                modoRegistro ? 'bg-[#FF8C00] text-white shadow-md' : 'text-white/70 hover:text-white'
-              }`}
+              className={`flex-1 py-2 rounded-full text-xs font-bold transition-all ${modoRegistro ? 'bg-[#FF8C00] text-white shadow-md' : 'text-white/70 hover:text-white'
+                }`}
             >
               Registrarse
             </button>

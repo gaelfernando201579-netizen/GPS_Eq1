@@ -7,6 +7,7 @@ import MiPerfil from './MiPerfil';
 import PanelVendedor from './PanelVendedor';
 import PanelRepartidor from './PanelRepartidor';
 import PanelModerador from './PanelModerador';
+import { supabase } from './config/supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -35,6 +36,34 @@ function App() {
   const [pedidosParaVendedor, setPedidosParaVendedor] = useState([]);
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [errorPedidos, setErrorPedidos] = useState('');
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        cargarUsuarioOAuth(session.user);
+      }
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        cargarUsuarioOAuth(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        setPantallaActual('login');
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+  const cargarUsuarioOAuth = (user) => {
+    const nombre = user.user_metadata?.full_name || user.user_metadata?.name || user.email.split('@')[0];
+    const correo = user.email;
+    manejarIngreso(
+      {
+        nombre,
+        correo,
+        carrera: 'Ing. Sistemas Computacionales'
+      },
+      user.id
+    );
+  };
 
   useEffect(() => {
     let vigente = true;
@@ -310,7 +339,6 @@ function App() {
       {pantallaActual === 'login' && (
         <CampyLogin alIngresar={manejarIngreso} irARegistro={() => setPantallaActual('registro')} registroExitoso={registroExitoso} />
       )}
-      
       {pantallaActual === 'registro' && (
         <CampyRegistro
           volverAlLogin={() => setPantallaActual('login')}
@@ -319,32 +347,32 @@ function App() {
       )}
 
       {pantallaActual === 'home' && (
-        <HomeComprador 
+        <HomeComprador
           productos={productosCatalogo}
           cargandoProductos={cargandoProductos}
           errorProductos={errorProductos}
           recargarProductos={() => setRecargaCatalogo((n) => n + 1)}
-          carrito={carritoGlobal} 
+          carrito={carritoGlobal}
           setCarrito={setCarritoGlobal}
           irAPedidos={procesarCompra} 
           irAMisPedidos={() => setPantallaActual('pedidos')}
-          irAPerfil={() => setPantallaActual('perfil')} 
+          irAPerfil={() => setPantallaActual('perfil')}
         />
       )}
 
       {pantallaActual === 'pedidos' && (
-        <MisPedidos 
+        <MisPedidos
           pedidosVendedor={pedidosPorCumplir}
           cargandoPedidos={cargandoPedidos}
           errorPedidos={errorPedidos}
           cambiarEstadoPedido={confirmarRecepcionPedido}
           irAInicio={() => setPantallaActual('home')} 
-          irAPerfil={() => setPantallaActual('perfil')} 
+          irAPerfil={() => setPantallaActual('perfil')}
         />
       )}
 
       {pantallaActual === 'perfil' && (
-        <MiPerfil 
+        <MiPerfil
           usuario={usuarioActual}
           setUsuario={setUsuarioActual}
           registrarComoVendedor={registrarComoVendedor}
