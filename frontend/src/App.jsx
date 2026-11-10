@@ -117,10 +117,15 @@ function App() {
         ...prev,
         nombre: datosUsuario.nombre || prev.nombre,
         correo: datosUsuario.correo || prev.correo,
-        carrera: datosUsuario.carrera || prev.carrera
+        carrera: datosUsuario.carrera || prev.carrera,
+        id_usuario: datosUsuario.id_usuario,
+        esVendedor: datosUsuario.esVendedor === true,
+        datosVendedor: null,
+        esRepartidor: false,
+        datosRepartidor: null
       }));
     }
-    setPantallaActual('home');
+    setPantallaActual(datosUsuario?.esVendedor === true ? 'vendedor' : 'home');
     setRecargaCatalogo((n) => n + 1);
   };
 
