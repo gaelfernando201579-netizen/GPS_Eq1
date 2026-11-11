@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
 import PagoComprador from './PagoComprador.jsx';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const ETAPAS = [
   { clave: 'En preparación', etiqueta: 'Preparando', icono: '👨‍🍳' },
   { clave: 'En camino', etiqueta: 'En Camino', icono: '🛵' },
@@ -28,7 +30,8 @@ const MisPedidos = ({
   const [estrellas, setEstrellas] = useState(5);
   const [comentario, setComentario] = useState('');
   const [enviandoCalificacion, setEnviandoCalificacion] = useState(false);
-  const [calificadosLocal, setCalificadosLocal] = useState({}); // Para ocultar el botón tras calificar
+  const [calificadosLocal, setCalificadosLocal] = useState({});
+  const [errorCalificacion, setErrorCalificacion] = useState('');
 
   const confirmarPedidoRecibido = async (id) => {
     setErrorConfirmacion('');
@@ -53,17 +56,34 @@ const MisPedidos = ({
 
   const enviarCalificacion = async (e) => {
     e.preventDefault();
+    if (modalCalificacion === null) return;
+    setErrorCalificacion('');
     setEnviandoCalificacion(true);
 
-    // Aquí tu equipo de backend conectará el endpoint (ej. POST /api/calificaciones)
-    // Simularemos el guardado por 1 segundo para la prueba de diseño
-    setTimeout(() => {
+    try {
+      const token = localStorage.getItem('campy_token');
+      if (!token) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+      const respuesta = await fetch(`${API_URL}/api/pedidos/${modalCalificacion}/calificacion`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ estrellas, comentario: comentario.trim() })
+      });
+      const datos = await respuesta.json();
+      if (!respuesta.ok) {
+        throw new Error(datos.mensaje || 'No se pudo guardar la calificación.');
+      }
       setCalificadosLocal(prev => ({ ...prev, [modalCalificacion]: true }));
       setModalCalificacion(null);
       setEstrellas(5);
       setComentario('');
+    } catch (error) {
+      setErrorCalificacion(error.message || 'No se pudo guardar la calificación.');
+    } finally {
       setEnviandoCalificacion(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -268,13 +288,13 @@ const MisPedidos = ({
                 {/* SECCIÓN DE CALIFICACIÓN (Solo visible si ya se entregó) */}
                 {estaEntregado && !estaCancelado && (
                   <div className="mt-2 pt-4 border-t border-gray-100">
-                    {calificadosLocal[entrega.id] ? (
+                    {entrega.calificacion || calificadosLocal[entrega.id] ? (
                       <p className="text-center text-xs font-bold text-[#22C55E] bg-green-50 py-2 rounded-xl border border-green-100">
                         ¡Gracias por tu calificación! ⭐
                       </p>
                     ) : (
                       <button
-                        onClick={() => setModalCalificacion(entrega.id)}
+                        onClick={() => { setErrorCalificacion(''); setModalCalificacion(entrega.id); }}
                         className="w-full bg-white border-2 border-[#0A3895] text-[#0A3895] hover:bg-blue-50 font-black text-xs py-3 rounded-xl shadow-sm transition-colors active:scale-95"
                       >
                         ⭐ Calificar Producto y Entrega
@@ -307,6 +327,7 @@ const MisPedidos = ({
               <p className="text-xs text-gray-500 text-center mb-5">¿Qué te pareció el producto y el servicio?</p>
 
               <form onSubmit={enviarCalificacion} className="flex flex-col gap-4">
+                {errorCalificacion && <p role="alert" className="text-red-600 text-sm">{errorCalificacion}</p>}
                 <div className="flex justify-center gap-3 mb-2">
                   {[1, 2, 3, 4, 5].map(num => (
                     <button
@@ -324,6 +345,7 @@ const MisPedidos = ({
                   value={comentario}
                   onChange={(e) => setComentario(e.target.value)}
                   placeholder="¡Estuvo delicioso! El vendedor fue muy amable... (Opcional)"
+                  maxLength={1000}
                   className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm outline-none focus:border-[#0A3895] resize-none h-24"
                 ></textarea>
 

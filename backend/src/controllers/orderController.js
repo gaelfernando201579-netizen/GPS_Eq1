@@ -308,7 +308,8 @@ async function consultarPedidos(req, res, campo) {
               c.nombre AS comprador_nombre,
               v.nombre AS vendedor_nombre,
               d.id_producto, d.cantidad, d.precio_unitario,
-              pr.nombre AS producto_nombre, pr.imagen_url
+              pr.nombre AS producto_nombre, pr.imagen_url,
+              cal.estrellas AS calificacion_estrellas, cal.comentario AS calificacion_comentario
        FROM public.pedidos p
        JOIN public.usuarios c
          ON c.id_usuario = p.id_comprador
@@ -318,6 +319,8 @@ async function consultarPedidos(req, res, campo) {
          ON d.id_pedido = p.id_pedido
        LEFT JOIN public.productos pr
          ON pr.id_producto = d.id_producto
+       LEFT JOIN public.calificaciones_pedidos cal
+         ON cal.id_pedido = p.id_pedido
        WHERE p.${campo} = $1
        ORDER BY p.fecha_pedido DESC,
                 p.id_pedido DESC,
@@ -343,6 +346,10 @@ async function consultarPedidos(req, res, campo) {
           requiereRepartidor: false,
           repartidorAsignado: null,
           notaCancelacion: '',
+          calificacion: fila.calificacion_estrellas === null ? null : {
+            estrellas: Number(fila.calificacion_estrellas),
+            comentario: fila.calificacion_comentario || ''
+          },
           items: []
         });
       }
@@ -587,5 +594,47 @@ export async function confirmarRecepcionComprador(req, res) {
     return res.status(500).json({
       mensaje: 'No se pudo guardar la recepción en Supabase.'
     });
+  }
+}
+
+// Una calificación por pedido entregado, solo del comprador autenticado.
+export async function calificarPedido(req, res) {
+  const idPedido = Number(req.params.id);
+  const idComprador = Number(req.usuario?.id);
+  const estrellas = Number(req.body?.estrellas);
+  const comentario = req.body?.comentario ?? '';
+
+  if (!Number.isSafeInteger(idComprador) || idComprador <= 0) {
+    return res.status(401).json({ mensaje: 'Debes iniciar sesión para calificar.' });
+  }
+  if (!Number.isSafeInteger(idPedido) || idPedido <= 0) {
+    return res.status(400).json({ mensaje: 'Pedido inválido.' });
+  }
+  if (!Number.isInteger(estrellas) || estrellas < 1 || estrellas > 5 ||
+      typeof comentario !== 'string' || comentario.trim().length > 1000) {
+    return res.status(400).json({ mensaje: 'Selecciona de 1 a 5 estrellas y un comentario de máximo 1000 caracteres.' });
+  }
+
+  try {
+    const resultado = await pool.query(
+      `INSERT INTO public.calificaciones_pedidos
+         (id_pedido, id_comprador, estrellas, comentario)
+       SELECT p.id_pedido, p.id_comprador, $3::smallint, $4::text
+       FROM public.pedidos p
+       WHERE p.id_pedido = $1 AND p.id_comprador = $2 AND p.estado = 'Entregado'
+       ON CONFLICT (id_pedido) DO NOTHING
+       RETURNING id_pedido, estrellas, comentario, fecha_calificacion`,
+      [idPedido, idComprador, estrellas, comentario.trim()]
+    );
+    if (!resultado.rowCount) {
+      return res.status(409).json({ mensaje: 'Solo puedes calificar una vez un pedido propio que ya fue entregado.' });
+    }
+    return res.status(201).json({
+      mensaje: 'Calificación guardada en Supabase.',
+      calificacion: resultado.rows[0]
+    });
+  } catch (error) {
+    console.error('Error guardando calificación:', error);
+    return res.status(500).json({ mensaje: 'No se pudo guardar la calificación en Supabase.' });
   }
 }
