@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
 
+import FormularioTarjetaDemo from './FormularioTarjetaDemo.jsx';
+import {
+  obtenerTarjetas,
+  eliminarTarjeta
+} from './tarjetasDemo.js';
+
+
 const DIAS_SEMANA = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 const BLOQUES_HORA = ['08-10', '10-12', '12-14', '14-16', '16-18'];
 
@@ -18,6 +25,23 @@ const MiPerfil = ({
   cerrarSesion
 }) => {
   const [modalActivo, setModalActivo] = useState(null);
+
+
+const usuarioTarjetas = usuario?.id_usuario || usuario?.correo;
+
+const [metodoPago, setMetodoPago] = useState('efectivo');
+const [agregarTarjeta, setAgregarTarjeta] = useState(false);
+
+const [tarjetas, setTarjetas] = useState(() =>
+  obtenerTarjetas(usuarioTarjetas)
+);
+
+const [tarjetaElegida, setTarjetaElegida] = useState('');
+
+const actualizarTarjetas = () => {
+  setTarjetas(obtenerTarjetas(usuarioTarjetas));
+};
+
 
   // Estados para editar perfil básico de comprador
   const [nombreEdit, setNombreEdit] = useState(usuario?.nombre || 'Cintia Yadai Salinas Montesinos');
@@ -542,37 +566,170 @@ const MiPerfil = ({
         )}
 
         {/* MODAL: MÉTODOS DE PAGO */}
-        {modalActivo === 'pago' && (
-          <div className="absolute bottom-0 left-0 w-full bg-white rounded-t-[30px] p-6 pb-10 z-50 animate-[slideUp_0.3s_ease-out]">
-            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6"></div>
-            <h2 className="text-xl font-black text-[#FF8C00] mb-6">Métodos de Pago</h2>
-            <div className="flex flex-col gap-3">
-              <label className="flex items-center justify-between p-4 border-2 border-[#FF8C00] bg-orange-50 rounded-2xl cursor-pointer">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">💵</span>
-                  <div>
-                    <p className="font-bold text-gray-800 text-sm">Efectivo contra entrega</p>
-                    <p className="text-[10px] text-gray-500">Paga directamente en el campus</p>
-                  </div>
-                </div>
-                <input type="radio" name="pago" defaultChecked className="w-5 h-5 accent-[#FF8C00]" />
-              </label>
+        
+{/* MODAL: MÉTODOS DE PAGO */}
+{modalActivo === 'pago' && (
+  <div className="absolute inset-0 z-50 flex flex-col justify-end bg-black/30">
 
-              <label className="flex items-center justify-between p-4 border border-gray-200 rounded-2xl cursor-pointer hover:bg-gray-50">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">📱</span>
-                  <div>
-                    <p className="font-bold text-gray-800 text-sm">Transferencia / SPEI</p>
-                    <p className="text-[10px] text-gray-500">Usa tu app bancaria</p>
-                  </div>
-                </div>
-                <input type="radio" name="pago" className="w-5 h-5 accent-[#FF8C00]" />
-              </label>
+    <div className="w-full max-h-[88%] overflow-y-auto bg-white rounded-t-[30px] p-6 pb-10 animate-[slideUp_0.3s_ease-out]">
 
-              <button onClick={() => setModalActivo(null)} className="w-full bg-[#FF8C00] text-white font-bold py-4 rounded-xl shadow-lg mt-4 active:scale-95 transition-transform">Confirmar Método</button>
+      <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6" />
+
+      <h2 className="text-xl font-black text-[#FF8C00] mb-6">
+        Métodos de Pago
+      </h2>
+
+      <div className="flex flex-col gap-3">
+
+        {[
+          [
+            'efectivo',
+            '💵',
+            'Efectivo contra entrega',
+            'Paga directamente en el campus'
+          ],
+          [
+            'transferencia',
+            '📱',
+            'Transferencia / SPEI',
+            'Usa tu app bancaria'
+          ],
+          [
+            'tarjeta',
+            '💳',
+            'Tarjeta bancaria',
+            'Selecciona o agrega una tarjeta'
+          ]
+        ].map(([valor, icono, titulo, descripcion]) => (
+          <label
+            key={valor}
+            className={`flex items-center justify-between p-4 border-2 rounded-2xl cursor-pointer ${
+              metodoPago === valor
+                ? 'border-[#FF8C00] bg-orange-50'
+                : 'border-gray-200'
+            }`}
+          >
+            <div className="flex gap-3 items-center">
+
+              <span className="text-2xl">
+                {icono}
+              </span>
+
+              <div>
+                <p className="font-bold text-gray-800 text-sm">
+                  {titulo}
+                </p>
+
+                <p className="text-[10px] text-gray-500">
+                  {descripcion}
+                </p>
+              </div>
+
             </div>
+
+            <input
+              type="radio"
+              name="pago"
+              checked={metodoPago === valor}
+              onChange={() => {
+                setMetodoPago(valor);
+                actualizarTarjetas();
+              }}
+              className="w-5 h-5 accent-[#FF8C00]"
+            />
+          </label>
+        ))}
+
+        {metodoPago === 'tarjeta' && (
+          <div className="space-y-3">
+
+            {tarjetas.map(t => (
+              <div
+                key={t.id}
+                className="flex items-center gap-2 rounded-xl border p-3 text-xs"
+              >
+                <input
+                  type="radio"
+                  name="tarjeta-guardada"
+                  checked={tarjetaElegida === t.id}
+                  onChange={() => setTarjetaElegida(t.id)}
+                />
+
+                <span className="flex-1">
+                  {t.marca} •••• {t.ultimos4} · {t.titular}
+                </span>
+
+                <button
+                  type="button"
+                  className="text-red-600"
+                  onClick={() => {
+                    eliminarTarjeta(usuarioTarjetas, t.id);
+                    actualizarTarjetas();
+
+                    if (tarjetaElegida === t.id) {
+                      setTarjetaElegida('');
+                    }
+                  }}
+                >
+                  Quitar
+                </button>
+              </div>
+            ))}
+
+            {agregarTarjeta ? (
+              <FormularioTarjetaDemo
+                usuarioId={usuarioTarjetas}
+                alGuardar={t => {
+                  actualizarTarjetas();
+                  setTarjetaElegida(t.id);
+                  setAgregarTarjeta(false);
+                }}
+                alCancelar={() => setAgregarTarjeta(false)}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAgregarTarjeta(true)}
+                className="w-full border-2 border-dashed rounded-xl p-3 text-[#0A3895] font-bold text-sm"
+              >
+                + Agregar nueva tarjeta
+              </button>
+            )}
+
           </div>
         )}
+
+        <button
+          type="button"
+          onClick={() => {
+            if (
+              metodoPago === 'tarjeta' &&
+              !tarjetaElegida
+            ) {
+              setAgregarTarjeta(true);
+              return;
+            }
+
+            setModalActivo(null);
+          }}
+          className="w-full bg-[#FF8C00] text-white font-bold py-4 rounded-xl shadow-lg mt-4"
+        >
+          Confirmar Método
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setModalActivo(null)}
+          className="text-gray-500 text-sm"
+        >
+          Cerrar
+        </button>
+
+      </div>
+    </div>
+  </div>
+)}
+
 
         {/* MODAL: DIRECCIONES */}
         {modalActivo === 'direcciones' && (

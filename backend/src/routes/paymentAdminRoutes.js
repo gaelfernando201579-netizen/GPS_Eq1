@@ -1,0 +1,13 @@
+import {Router} from 'express';
+import {verificarToken} from '../middleware/auth.js';
+import {autorizarAdmin,pendientes,comprobanteAdmin,resolver,distribuciones,distribucionesPropias,liquidar,actualizarComision} from '../controllers/paymentAdminController.js';
+const router=Router();router.use(verificarToken);
+router.get('/distribuciones/mias',distribucionesPropias);
+router.use(autorizarAdmin);
+router.get('/pagos/pendientes',pendientes);
+router.get('/pagos/:id/comprobante',comprobanteAdmin);
+router.post('/pagos/:id/resolver',resolver);
+router.get('/distribuciones',distribuciones);
+router.post('/distribuciones/:id/liquidar',liquidar);
+router.post('/comisiones',actualizarComision);
+export default router;

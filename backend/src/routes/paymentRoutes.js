@@ -1,0 +1,11 @@
+import {Router} from 'express';
+import {verificarToken} from '../middleware/auth.js';
+import {cargarComprobante} from '../middleware/uploadMiddleware.js';
+import {cuentaCampy,estadoPago,descargarComprobante,subirComprobante,solicitarVerificacion} from '../controllers/paymentController.js';
+const router=Router();router.use(verificarToken);
+router.get('/cuenta-campy',cuentaCampy);
+router.get('/:pedidoId/estado',estadoPago);
+router.get('/:pedidoId/comprobante',descargarComprobante);
+router.post('/:pedidoId/comprobante',(req,res,next)=>cargarComprobante(req,res,e=>e?res.status(400).json({mensaje:e.message}):next()),subirComprobante);
+router.post('/:pedidoId/verificar',solicitarVerificacion);
+export default router;

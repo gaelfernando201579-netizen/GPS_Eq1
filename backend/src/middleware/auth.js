@@ -9,7 +9,7 @@ export function verificarToken(req, res, next) {
   }
 
   try {
-    const verificado = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    const verificado = jwt.verify(token, process.env.JWT_SECRET || (() => { throw new Error('JWT no configurado'); })());
     req.usuario = verificado;
     next();
   } catch (error) {

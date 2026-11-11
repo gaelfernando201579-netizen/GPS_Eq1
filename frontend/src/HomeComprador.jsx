@@ -208,9 +208,15 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
             {productosFiltrados.map((producto) => (
               <div key={producto.id} className="bg-white rounded-2xl p-3 shadow-sm border border-gray-100 flex items-center gap-4 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setProductoSeleccionado(producto)}>
                 <div className="w-16 h-16 bg-gray-200 rounded-xl flex items-center justify-center text-gray-400 text-xs font-bold shrink-0 overflow-hidden">{producto.imagen_url ? <img src={producto.imagen_url} alt={producto.nombre} className="w-full h-full object-cover" /> : 'IMG'}</div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-sm text-gray-800 leading-tight">{producto.nombre}</h3>
-                  <p className="text-gray-400 text-[10px] mt-0.5">{producto.tienda}</p>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-sm text-gray-800 leading-tight truncate">{producto.nombre}</h3>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <p className="text-gray-400 text-[10px] truncate max-w-[80px]">{producto.tienda}</p>
+                    {/* ETIQUETA DE ESTRELLAS DE PRODUCTO */}
+                    <span className="text-[9px] font-bold text-gray-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 whitespace-nowrap">
+                      ⭐ {producto.calificacion || '4.8'} <span className="font-medium text-gray-400">({producto.numResenas || '24'})</span>
+                    </span>
+                  </div>
                   <p className="text-[#FF8C00] font-black text-sm mt-1">${producto.precio}</p>
                 </div>
                 
@@ -324,21 +330,27 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
           </div>
         )}
 
+        {/* MODAL DEL PRODUCTO SELECCIONADO */}
         {productoSeleccionado && (
-          <div className="absolute inset-0 z-50 flex items-end justify-center">
+          <div className="absolute inset-0 z-[50] flex items-end justify-center">
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setProductoSeleccionado(null)}></div>
             <div className="bg-white w-full rounded-t-[30px] p-6 pb-8 relative z-10 animate-[slideUp_0.3s_ease-out]">
               <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6"></div>
               <div className="flex gap-4 items-center mb-6">
                 <div className="w-20 h-20 bg-gray-200 rounded-xl flex items-center justify-center text-gray-400 text-xs font-bold shrink-0 overflow-hidden">{productoSeleccionado.imagen_url ? <img src={productoSeleccionado.imagen_url} alt={productoSeleccionado.nombre} className="w-full h-full object-cover" /> : 'IMG'}</div>
-                <div>
-                  <h2 className="text-lg font-black text-gray-900 leading-tight">{productoSeleccionado.nombre}</h2>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-lg font-black text-gray-900 leading-tight truncate">{productoSeleccionado.nombre}</h2>
                   <p className="text-[#FF8C00] font-black text-xl mt-1">${productoSeleccionado.precio}</p>
                 </div>
               </div>
               <div className="bg-[#F4F7FD] rounded-2xl p-4 mb-4 border border-blue-50">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-blue-500 text-sm">👤</span><span className="font-bold text-sm text-gray-800">{productoSeleccionado.tienda}</span>
+                  <span className="text-blue-500 text-sm">👤</span>
+                  <span className="font-bold text-sm text-gray-800 truncate">{productoSeleccionado.tienda}</span>
+                  {/* ETIQUETA DE ESTRELLAS DE PRODUCTO EN EL MODAL */}
+                  <span className="text-[10px] font-bold text-gray-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full ml-auto whitespace-nowrap">
+                    ⭐ {productoSeleccionado.calificacion || '4.8'} ({productoSeleccionado.numResenas || '24'})
+                  </span>
                 </div>
                 <div className="flex items-start gap-2">
                   <span className="text-red-500 text-sm mt-0.5">📍</span><span className="text-xs text-gray-500 font-medium">{productoSeleccionado.ubicacion}</span>
@@ -346,7 +358,7 @@ const HomeComprador = ({ productos = [], cargandoProductos = false, errorProduct
               </div>
               <button 
                 onClick={() => { manejarCantidad({ stopPropagation: () => {} }, productoSeleccionado.id, 1); setProductoSeleccionado(null); }}
-                className="w-full bg-[#0A3895] hover:bg-[#082b75] text-white font-bold text-lg py-4 rounded-2xl shadow-lg mt-4 active:scale-95"
+                className="w-full bg-[#0A3895] hover:bg-[#082b75] text-white font-bold text-lg py-4 rounded-2xl shadow-lg mt-4 active:scale-95 transition-transform"
               >
                 Agregar al carrito
               </button>

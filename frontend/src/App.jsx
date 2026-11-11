@@ -362,6 +362,8 @@ function App() {
 
       {pantallaActual === 'pedidos' && (
         <MisPedidos
+          usuarioId={usuarioActual.id_usuario || usuarioActual.correo}
+          token={tokenAuth}
           pedidosVendedor={pedidosPorCumplir}
           cargandoPedidos={cargandoPedidos}
           errorPedidos={errorPedidos}
@@ -416,6 +418,7 @@ function App() {
           }}
         />
       )}
+
 
       {pantallaActual === 'vendedor' && (
         <PanelVendedor

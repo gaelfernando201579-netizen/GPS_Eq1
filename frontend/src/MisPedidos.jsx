@@ -1,5 +1,7 @@
+
 import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
+import PagoComprador from './PagoComprador.jsx';
 
 const ETAPAS = [
   { clave: 'En preparación', etiqueta: 'Preparando', icono: '👨‍🍳' },
@@ -8,9 +10,25 @@ const ETAPAS = [
   { clave: 'Entregado', etiqueta: 'Entregado', icono: '✓' }
 ];
 
-const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedidos = false, errorPedidos = '', cambiarEstadoPedido }) => {
+const MisPedidos = ({
+  irAInicio,
+  irAPerfil,
+  pedidosVendedor = [],
+  cargandoPedidos = false,
+  errorPedidos = '',
+  cambiarEstadoPedido,
+  usuarioId
+}) => {
+
   const [errorConfirmacion, setErrorConfirmacion] = useState('');
   const [confirmandoId, setConfirmandoId] = useState(null);
+
+  // Nuevos estados para el sistema de calificaciones
+  const [modalCalificacion, setModalCalificacion] = useState(null);
+  const [estrellas, setEstrellas] = useState(5);
+  const [comentario, setComentario] = useState('');
+  const [enviandoCalificacion, setEnviandoCalificacion] = useState(false);
+  const [calificadosLocal, setCalificadosLocal] = useState({}); // Para ocultar el botón tras calificar
 
   const confirmarPedidoRecibido = async (id) => {
     setErrorConfirmacion('');
@@ -23,6 +41,7 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedido
       setConfirmandoId(null);
     }
   };
+
   const obtenerIndiceEtapa = (estado) => {
     if (estado === 'Pendiente') return -1;
     if (estado === 'En preparación' || estado === 'Aceptado') return 0;
@@ -32,10 +51,25 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedido
     return 0;
   };
 
+  const enviarCalificacion = async (e) => {
+    e.preventDefault();
+    setEnviandoCalificacion(true);
+
+    // Aquí tu equipo de backend conectará el endpoint (ej. POST /api/calificaciones)
+    // Simularemos el guardado por 1 segundo para la prueba de diseño
+    setTimeout(() => {
+      setCalificadosLocal(prev => ({ ...prev, [modalCalificacion]: true }));
+      setModalCalificacion(null);
+      setEstrellas(5);
+      setComentario('');
+      setEnviandoCalificacion(false);
+    }, 1000);
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center font-sans">
       <div className="w-full max-w-[400px] h-screen sm:h-[800px] bg-white relative flex flex-col shadow-2xl sm:rounded-2xl overflow-hidden">
-        
+
         <div className="bg-[#0A3895] pt-6 pb-8 px-6 rounded-b-[40px] relative z-0 shrink-0">
           <div className="flex justify-between items-center text-white">
             <h1 className="text-xl font-bold tracking-widest uppercase">Campy</h1>
@@ -71,6 +105,8 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedido
                     ? 'border-red-300 bg-red-50/30'
                     : estaEnElPunto
                     ? 'border-[#22C55E]'
+                    : estaEntregado
+                    ? 'border-gray-200 opacity-90'
                     : 'border-[#FF8C00]'
                 }`}
               >
@@ -94,6 +130,14 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedido
                   </span>
                   <span className="text-gray-400 text-[10px] font-bold">Pedido #{entrega.id}</span>
                 </div>
+
+                {/* Métodos de pago: transferencia y tarjetas */}
+                <PagoComprador
+                  usuarioId={usuarioId}
+                  pedidoId={entrega.id}
+                  total={entrega.total}
+                  cancelado={estaCancelado}
+                />
 
                 {/* Alerta destacada cuando ya llegaron al punto de encuentro */}
                 {estaEnElPunto && (
@@ -210,6 +254,7 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedido
                   </div>
                 )}
 
+                {/* BOTÓN PARA CONFIRMAR RECEPCIÓN */}
                 {estaEnElPunto && !estaCancelado && !estaEntregado && (
                   <button
                     onClick={() => confirmarPedidoRecibido(entrega.id)}
@@ -219,10 +264,28 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedido
                     {confirmandoId === entrega.id ? 'Guardando recepción...' : 'Confirmar que ya recibí mi pedido'}
                   </button>
                 )}
+
+                {/* SECCIÓN DE CALIFICACIÓN (Solo visible si ya se entregó) */}
+                {estaEntregado && !estaCancelado && (
+                  <div className="mt-2 pt-4 border-t border-gray-100">
+                    {calificadosLocal[entrega.id] ? (
+                      <p className="text-center text-xs font-bold text-[#22C55E] bg-green-50 py-2 rounded-xl border border-green-100">
+                        ¡Gracias por tu calificación! ⭐
+                      </p>
+                    ) : (
+                      <button
+                        onClick={() => setModalCalificacion(entrega.id)}
+                        className="w-full bg-white border-2 border-[#0A3895] text-[#0A3895] hover:bg-blue-50 font-black text-xs py-3 rounded-xl shadow-sm transition-colors active:scale-95"
+                      >
+                        ⭐ Calificar Producto y Entrega
+                      </button>
+                    )}
+                  </div>
+                )}
+
               </div>
             );
           })}
-
         </div>
 
         <div className="absolute bottom-0 w-full bg-white rounded-t-[30px] shadow-[0_-10px_20px_rgba(0,0,0,0.05)] px-8 py-2 flex justify-between items-end pb-6 z-20">
@@ -233,6 +296,49 @@ const MisPedidos = ({ irAInicio, irAPerfil, pedidosVendedor = [], cargandoPedido
           </div>
           <div className="flex flex-col items-center opacity-40 cursor-pointer pb-1 hover:opacity-80" onClick={irAPerfil}><span className="text-2xl mb-1">👤</span></div>
         </div>
+
+        {/* MODAL DE CALIFICACIONES FLOTANTE */}
+        {modalCalificacion && (
+          <div className="absolute inset-0 z-50 flex items-end justify-center">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !enviandoCalificacion && setModalCalificacion(null)}></div>
+            <div className="bg-white w-full rounded-t-[30px] p-6 pb-8 relative z-10 animate-[slideUp_0.3s_ease-out]">
+              <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-4"></div>
+              <h2 className="text-lg font-black text-[#0A3895] text-center mb-1">Califica tu pedido</h2>
+              <p className="text-xs text-gray-500 text-center mb-5">¿Qué te pareció el producto y el servicio?</p>
+
+              <form onSubmit={enviarCalificacion} className="flex flex-col gap-4">
+                <div className="flex justify-center gap-3 mb-2">
+                  {[1, 2, 3, 4, 5].map(num => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => setEstrellas(num)}
+                      className={`text-4xl transition-transform hover:scale-110 active:scale-90 ${estrellas >= num ? 'text-[#FF8C00]' : 'text-gray-200'}`}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  value={comentario}
+                  onChange={(e) => setComentario(e.target.value)}
+                  placeholder="¡Estuvo delicioso! El vendedor fue muy amable... (Opcional)"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm outline-none focus:border-[#0A3895] resize-none h-24"
+                ></textarea>
+
+                <button
+                  type="submit"
+                  disabled={enviandoCalificacion}
+                  className="w-full bg-[#0A3895] hover:bg-[#082b75] text-white font-black text-sm py-4 rounded-2xl shadow-lg mt-2 disabled:opacity-50 transition-colors"
+                >
+                  {enviandoCalificacion ? 'Guardando calificación...' : 'Enviar Calificación'}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

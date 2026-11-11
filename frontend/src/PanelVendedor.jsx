@@ -153,7 +153,6 @@ const PanelVendedor = ({
     setModalActivo(null);
   };
 
-  // Abrir panel cuando el vendedor da clic en un pedido para aceptarlo o declinarlo
   const abrirPanelGestionPedido = (pedido) => {
     setErrorAccionPedido('');
     setPedidoSeleccionado(pedido);
@@ -259,7 +258,6 @@ const PanelVendedor = ({
           {/* ================= APARTADO 1: MIS PRODUCTOS ================= */}
           {tabActiva === 'productos' && (
             <>
-              {/* Botón Principal para Agregar Producto */}
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-black text-sm text-gray-900 uppercase tracking-wide">
                   Mis Productos ({misProductos.length})
@@ -387,7 +385,7 @@ const PanelVendedor = ({
             </>
           )}
 
-          {/* ================= APARTADO 2: PEDIDOS POR CUMPLIR Y GESTIÓN DE ESTADOS ================= */}
+          {/* ================= APARTADO 2: PEDIDOS POR CUMPLIR ================= */}
           {tabActiva === 'pedidos' && (
             <>
               <div className="mb-4">
@@ -506,7 +504,7 @@ const PanelVendedor = ({
                         </div>
 
                         <div className="flex justify-between items-center border-t border-gray-100 pt-2.5 mb-3">
-                          <span className="text-xs font-bold text-gray-400 uppercase">Total ({ped.metodoPago})</span>
+                          <span className="text-xs font-bold text-gray-400 uppercase">Total ({ped.metodoPago || 'Efectivo'})</span>
                           <span className="text-lg font-black text-[#FF8C00]">${Number(ped.total).toFixed(2)}</span>
                         </div>
 
@@ -536,8 +534,24 @@ const PanelVendedor = ({
                           </div>
                         )}
 
+                        {ped.requiereRepartidor && !esNuevoPendiente && !estaCancelado && !estaEntregado && (
+                          <div className="flex flex-col gap-3 pt-3 border-t border-gray-100" onClick={e => e.stopPropagation()}>
+                            <p className="font-black text-xs text-[#0A3895]">Preparación del pedido: {ped.estadoReparto || 'Buscando repartidor'}</p>
+                            {(ped.estadoReparto === 'Buscando repartidor' || ped.estadoReparto === 'Aceptado') && (
+                              <button onClick={() => manejarCambioEstadoPedido(ped.id,'Listo')}
+                                className="bg-[#0A3895] text-white rounded-xl p-3 font-bold">✓ Pedido listo</button>
+                            )}
+                            {ped.estadoReparto === 'Listo' && ped.repartidorAsignado && (
+                              <button onClick={() => manejarCambioEstadoPedido(ped.id,'Repartidor llegó')}
+                                className="bg-[#FF8C00] text-white rounded-xl p-3 font-bold">🛵 El repartidor llegó</button>
+                            )}
+                            {ped.estadoReparto === 'Listo' && !ped.repartidorAsignado && <p>Esperando que un repartidor acepte el pedido.</p>}
+                            {['Repartidor llegó','Recibido','En camino','En el punto de entrega'].includes(ped.estadoReparto) &&
+                              <p>Entrega a cargo del repartidor: {ped.estadoReparto}</p>}
+                          </div>
+                        )}
                         {/* Botones de progreso de estados cuando ya fue aceptado */}
-                        {!esNuevoPendiente && !estaCancelado && !estaEntregado && (
+                        {!ped.requiereRepartidor && !esNuevoPendiente && !estaCancelado && !estaEntregado && (
                           <div className="flex flex-col gap-2 pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
                             <p className="text-[10px] font-black uppercase text-gray-400">
                               Actualizar estado del pedido al comprador:
@@ -600,6 +614,31 @@ const PanelVendedor = ({
                             </div>
                           </div>
                         )}
+
+                        {/* MOSTRAR CALIFICACIÓN DEL CLIENTE (Forzado para diseño) */}
+                        {estaEntregado && (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            <p className="text-[10px] font-black uppercase text-[#0A3895] mb-1">
+                              Calificación del Comprador:
+                            </p>
+                            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                              <div className="flex items-center gap-1 mb-1">
+                                {[...Array(5)].map((_, i) => (
+                                  <span key={i} className={`text-lg ${i < (ped.calificacion?.estrellas || 5) ? 'text-[#FF8C00]' : 'text-gray-300'}`}>
+                                    ★
+                                  </span>
+                                ))}
+                                <span className="ml-2 font-bold text-gray-800 text-xs">
+                                  {ped.calificacion?.estrellas || 5} de 5
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-600 italic">
+                                "{ped.calificacion?.comentario || '¡Excelente servicio y muy rico!'}"
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
                       </div>
                     );
                   })}

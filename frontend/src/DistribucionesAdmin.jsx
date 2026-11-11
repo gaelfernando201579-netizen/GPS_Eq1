@@ -1,0 +1,9 @@
+import {useEffect,useState} from 'react';
+const API=import.meta.env.VITE_API_URL||'http://localhost:5000';
+export default function DistribucionesAdmin({token}){
+ const [items,setItems]=useState([]),[error,setError]=useState(''),[datos,setDatos]=useState({}),[ocupado,setOcupado]=useState(false);
+ const cargar=async()=>{try{const r=await fetch(`${API}/api/admin/distribuciones`,{headers:{Authorization:`Bearer ${token}`}});const d=await r.json();if(!r.ok)throw Error(d.mensaje);setItems(d);}catch(e){setError(e.message);}};
+ useEffect(()=>{cargar();},[token]);
+ const liquidar=async(id)=>{setOcupado(true);try{const d=datos[id]||{};const r=await fetch(`${API}/api/admin/distribuciones/${id}/liquidar`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify(d)});const resp=await r.json();if(!r.ok)throw Error(resp.mensaje);await cargar();}catch(e){setError(e.message);}finally{setOcupado(false);}};
+ return <div className="rounded-xl bg-white p-4"><h2 className="text-xl font-bold">Distribuciones y liquidaciones</h2><p className="text-sm">Registra únicamente transferencias de salida realmente efectuadas.</p>{error&&<p className="text-red-700" role="alert">{error}</p>}{items.map(d=><div key={d.id} className="my-2 border rounded-lg p-3"><p>{d.tipo} · usuario {d.destinatario_id||'CAMPY'} · ${d.importe} MXN · {d.estado}</p>{d.estado==='Pendiente'&&d.tipo!=='Campy'&&<><input placeholder="Referencia bancaria real" className="border p-2 m-1" onChange={e=>setDatos(v=>({...v,[d.id]:{...v[d.id],referencia:e.target.value}}))}/><input placeholder="Evidencia de transferencia de salida" className="border p-2 m-1" onChange={e=>setDatos(v=>({...v,[d.id]:{...v[d.id],evidencia:e.target.value}}))}/><button disabled={ocupado} onClick={()=>liquidar(d.id)} className="bg-[#0A3895] p-2 text-white rounded">Registrar liquidación</button></>}</div>)}<button onClick={cargar} className="underline">Actualizar</button></div>;
+}
