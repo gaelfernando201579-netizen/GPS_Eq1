@@ -125,10 +125,10 @@ function App() {
       datosUsuario?.esModerador === true
         ? 'moderador'
         : datosUsuario?.esVendedor === true
-        ? 'vendedor'
-        : datosUsuario?.esRepartidor === true
-          ? 'repartidor'
-          : 'home'
+          ? 'vendedor'
+          : datosUsuario?.esRepartidor === true
+            ? 'repartidor'
+            : 'home'
     );
     setRecargaCatalogo((n) => n + 1);
   };
@@ -223,7 +223,7 @@ function App() {
           esRepartidor: datos.esRepartidor === true,
           esModerador: datos.esModerador === true
         }));
-      } catch (_) { /* Se conserva la última información visible. */ }
+      } catch (_) { }
     };
     consultar();
     const intervalo = setInterval(consultar, 15000);
@@ -240,10 +240,90 @@ function App() {
   };
 
   const agregarNuevoProducto = async (nuevoProd) => {
-    setProductosCatalogo((prev) => [
-      { ...nuevoProd, id: Date.now() },
-      ...prev
-    ]);
+    try {
+      const { data: categoriasDB, error: errorCat } = await supabase
+        .from('categorias')
+        .select('id_categoria, nombre');
+
+      if (errorCat) {
+        alert('Error al leer categorías de Supabase (revisa permisos RLS): ' + errorCat.message);
+        return;
+      }
+
+      if (!categoriasDB || categoriasDB.length === 0) {
+        alert('Tu tabla "categorias" en Supabase está vacía (0 filas). Ejecuta el script SQL en Supabase para llenarla.');
+        return;
+      }
+
+      const catEncontrada = categoriasDB.find(
+        (c) => c.nombre?.trim().toLowerCase() === (nuevoProd.categoria || '').trim().toLowerCase()
+      );
+
+      const idCategoriaReal = catEncontrada ? catEncontrada.id_categoria : categoriasDB[0].id_categoria;
+
+      let idVendedorReal = usuarioActual?.id_usuario;
+      if (!idVendedorReal && usuarioActual?.correo) {
+        const { data: uData } = await supabase
+          .from('usuarios')
+          .select('id_usuario')
+          .eq('correo', usuarioActual.correo)
+          .maybeSingle();
+        if (uData?.id_usuario) idVendedorReal = uData.id_usuario;
+      }
+      if (!idVendedorReal) {
+        const { data: primerUser } = await supabase
+          .from('usuarios')
+          .select('id_usuario')
+          .limit(1)
+          .maybeSingle();
+        idVendedorReal = primerUser?.id_usuario;
+      }
+
+      if (!idVendedorReal) {
+        alert('No se encontró ningún usuario en la tabla "usuarios" para asignarle este producto.');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('productos')
+        .insert([
+          {
+            id_vendedor: idVendedorReal,
+            id_categoria: idCategoriaReal,
+            nombre: nuevoProd.nombre,
+            descripcion: nuevoProd.definicion || nuevoProd.comentario || '',
+            precio: nuevoProd.precio,
+            cantidad_disponible: 10,
+            imagen_url: nuevoProd.imagen_url || nuevoProd.imagen,
+            estado: 'Aprobado'
+          }
+        ])
+        .select();
+
+      if (error) {
+        console.error('Error insertando en la BD:', error);
+        alert('Error al guardar en la base de datos: ' + error.message);
+        return;
+      }
+
+      // 5. Reflejar en la vista de la app al instante
+      const productoGuardado = data?.[0] || {};
+      const nuevoProductoCompleto = {
+        ...nuevoProd,
+        id: productoGuardado.id_producto || Date.now(),
+        id_producto: productoGuardado.id_producto || Date.now(),
+        id_vendedor: idVendedorReal,
+        categoria: nuevoProd.categoria,
+        imagen_url: nuevoProd.imagen_url || nuevoProd.imagen,
+        esMio: true
+      };
+
+      setProductosCatalogo((prev) => [nuevoProductoCompleto, ...prev]);
+      alert('¡Producto y foto guardados exitosamente en la base de datos!');
+    } catch (err) {
+      console.error('Error inesperado:', err);
+      alert('Ocurrió un error inesperado al registrar el producto.');
+    }
   };
 
   const editarProducto = async (idProducto, datosActualizados) => {
@@ -354,7 +434,7 @@ function App() {
           recargarProductos={() => setRecargaCatalogo((n) => n + 1)}
           carrito={carritoGlobal}
           setCarrito={setCarritoGlobal}
-          irAPedidos={procesarCompra} 
+          irAPedidos={procesarCompra}
           irAMisPedidos={() => setPantallaActual('pedidos')}
           irAPerfil={() => setPantallaActual('perfil')}
         />
@@ -368,7 +448,7 @@ function App() {
           cargandoPedidos={cargandoPedidos}
           errorPedidos={errorPedidos}
           cambiarEstadoPedido={confirmarRecepcionPedido}
-          irAInicio={() => setPantallaActual('home')} 
+          irAInicio={() => setPantallaActual('home')}
           irAPerfil={() => setPantallaActual('perfil')}
         />
       )}

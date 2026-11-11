@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
+import { supabase } from './config/supabase';
 
 const DIAS_SEMANA = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 const BLOQUES_HORA = ['08-10', '10-12', '12-14', '14-16', '16-18'];
@@ -30,7 +31,8 @@ const PanelVendedor = ({
   const [prodDefinicion, setProdDefinicion] = useState('');
   const [prodComentario, setProdComentario] = useState('');
   const [prodImagen, setProdImagen] = useState(null);
-
+  const [archivoFoto, setArchivoFoto] = useState(null);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
   // Estados para editar datos y horario del vendedor
   const [nombreVendedor, setNombreVendedor] = useState(usuario?.datosVendedor?.nombre || usuario?.nombre || '');
   const [giroVenta, setGiroVenta] = useState(usuario?.datosVendedor?.queVende || '');
@@ -88,6 +90,7 @@ const PanelVendedor = ({
     setProdComentario('');
     setProdImagen(null);
     setModalActivo('producto');
+    setArchivoFoto(null);
   };
 
   const abrirModalEditarProducto = (prod) => {
@@ -104,6 +107,11 @@ const PanelVendedor = ({
   const manejarSeleccionFoto = (e) => {
     const archivo = e.target.files?.[0];
     if (!archivo) return;
+
+    // Guardar el archivo real para subirlo después
+    setArchivoFoto(archivo);
+
+    // Generar vista previa inmediata en pantalla
     const reader = new FileReader();
     reader.onloadend = () => {
       setProdImagen(reader.result);
@@ -114,28 +122,62 @@ const PanelVendedor = ({
   const guardarProducto = async (e) => {
     e.preventDefault();
     if (!prodNombre.trim() || !prodPrecio) return;
+    setSubiendoFoto(true);
+    let urlImagenFinal = prodImagen;
+    try {
+      if (archivoFoto) {
+        const BUCKET_NAME = 'products';
+        const extension = archivoFoto.name.split('.').pop();
+        const nombreArchivo = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${extension}`;
+        const rutaArchivo = `fotos/${nombreArchivo}`;
 
-    const datosVend = usuario?.datosVendedor || {};
-    const payloadProducto = {
-      nombre: prodNombre.trim(),
-      precio: parseFloat(prodPrecio),
-      categoria: prodCategoria,
-      definicion: prodDefinicion.trim(),
-      comentario: prodComentario.trim(),
-      imagen: prodImagen,
-      tienda: `Vende: ${datosVend.nombre || usuario?.nombre || 'Estudiante'}`,
-      ubicacion: datosVend.ubicacion || 'Campus ITO',
-      horario: datosVend.horarios || 'Horario escolar',
-      esMio: true
-    };
+        const { error: errorSubida } = await supabase.storage
+          .from(BUCKET_NAME)
+          .upload(rutaArchivo, archivoFoto, {
+            cacheControl: '3600',
+            upsert: false
+          });
 
-    if (productoEditandoId) {
-      await editarProducto(productoEditandoId, payloadProducto);
-    } else {
-      await agregarNuevoProducto(payloadProducto);
+        if (errorSubida) {
+          console.error('Error al subir imagen a Supabase:', errorSubida);
+          alert('No se pudo subir la foto: ' + errorSubida.message);
+          setSubiendoFoto(false);
+          return;
+        }
+        const { data: dataUrl } = supabase.storage
+          .from(BUCKET_NAME)
+          .getPublicUrl(rutaArchivo);
+        urlImagenFinal = dataUrl.publicUrl;
+      }
+
+      const datosVend = usuario?.datosVendedor || {};
+      const payloadProducto = {
+        nombre: prodNombre.trim(),
+        precio: parseFloat(prodPrecio),
+        categoria: prodCategoria,
+        definicion: prodDefinicion.trim(),
+        comentario: prodComentario.trim(),
+        imagen: urlImagenFinal,
+        imagen_url: urlImagenFinal, // Ambos campos para compatibilidad
+        tienda: `Vende: ${datosVend.nombre || usuario?.nombre || 'Estudiante'}`,
+        ubicacion: datosVend.ubicacion || 'Campus ITO',
+        horario: datosVend.horarios || 'Horario escolar',
+        esMio: true
+      };
+
+      if (productoEditandoId) {
+        await editarProducto(productoEditandoId, payloadProducto);
+      } else {
+        await agregarNuevoProducto(payloadProducto);
+      }
+      setArchivoFoto(null);
+      setModalActivo(null);
+    } catch (err) {
+      console.error('Error guardando producto:', err);
+      alert('Error al guardar el producto');
+    } finally {
+      setSubiendoFoto(false);
     }
-
-    setModalActivo(null);
   };
 
   const guardarCambiosVendedor = async (e) => {
@@ -227,7 +269,7 @@ const PanelVendedor = ({
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center font-sans">
       <div className="w-full max-w-[400px] h-screen sm:h-[800px] bg-gray-50 relative flex flex-col shadow-2xl sm:rounded-2xl overflow-hidden">
-        
+
         {/* ENCABEZADO AZUL CON DISTINTIVO DE VENDEDOR */}
         <div className="bg-[#0A3895] pt-6 pb-14 px-6 relative z-0 shrink-0">
           <div className="flex justify-between items-center text-white mb-2">
@@ -254,7 +296,7 @@ const PanelVendedor = ({
 
         {/* CONTENIDO DINÁMICO SEGÚN PESTAÑA */}
         <div className="flex-1 overflow-y-auto pb-32 px-5 z-10 -mt-2 hide-scrollbar">
-          
+
           {/* ================= APARTADO 1: MIS PRODUCTOS ================= */}
           {tabActiva === 'productos' && (
             <>
@@ -402,10 +444,10 @@ const PanelVendedor = ({
               {errorAccionPedido && <p role="alert" className="text-red-600 text-xs mb-3">{errorAccionPedido}</p>}
               {pedidosVendedor.length === 0 ? (
                 !cargandoPedidos && !errorPedidos && (
-                <div className="bg-white rounded-3xl p-6 text-center border border-gray-100">
-                  <span className="text-4xl block mb-2">📭</span>
-                  <p className="font-bold text-sm text-gray-700">No tienes pedidos registrados</p>
-                </div>
+                  <div className="bg-white rounded-3xl p-6 text-center border border-gray-100">
+                    <span className="text-4xl block mb-2">📭</span>
+                    <p className="font-bold text-sm text-gray-700">No tienes pedidos registrados</p>
+                  </div>
                 )
               ) : (
                 <div className="flex flex-col gap-4">
@@ -418,36 +460,33 @@ const PanelVendedor = ({
                       <div
                         key={ped.id}
                         onClick={() => esNuevoPendiente && abrirPanelGestionPedido(ped)}
-                        className={`bg-white rounded-3xl p-4 shadow-sm border-2 transition-all ${
-                          esNuevoPendiente ? 'cursor-pointer hover:shadow-md border-[#FF8C00]' : ''
-                        } ${
-                          estaCancelado
+                        className={`bg-white rounded-3xl p-4 shadow-sm border-2 transition-all ${esNuevoPendiente ? 'cursor-pointer hover:shadow-md border-[#FF8C00]' : ''
+                          } ${estaCancelado
                             ? 'border-red-200 opacity-80'
                             : estaEntregado
-                            ? 'border-green-200'
-                            : 'border-[#FF8C00]'
-                        }`}
+                              ? 'border-green-200'
+                              : 'border-[#FF8C00]'
+                          }`}
                       >
                         {/* Cabecera del Pedido */}
                         <div className="flex justify-between items-center mb-3">
                           <span
-                            className={`text-[10px] font-black px-3 py-1 rounded-full uppercase ${
-                              estaCancelado
-                                ? 'bg-red-100 text-red-600'
-                                : estaEntregado
+                            className={`text-[10px] font-black px-3 py-1 rounded-full uppercase ${estaCancelado
+                              ? 'bg-red-100 text-red-600'
+                              : estaEntregado
                                 ? 'bg-green-100 text-green-700'
                                 : esNuevoPendiente
-                                ? 'bg-amber-500 text-white animate-pulse'
-                                : 'bg-[#0A3895] text-white'
-                            }`}
+                                  ? 'bg-amber-500 text-white animate-pulse'
+                                  : 'bg-[#0A3895] text-white'
+                              }`}
                           >
                             {estaCancelado
                               ? '✕ Cancelado'
                               : estaEntregado
-                              ? '✓ Entregado'
-                              : esNuevoPendiente
-                              ? '🔔 Nuevo • Toca para Aceptar'
-                              : `⚡ ${ped.estado}`}
+                                ? '✓ Entregado'
+                                : esNuevoPendiente
+                                  ? '🔔 Nuevo • Toca para Aceptar'
+                                  : `⚡ ${ped.estado}`}
                           </span>
                           <span className="text-[11px] font-bold text-gray-400">
                             Pedido #{ped.id} • {ped.hora}
@@ -538,15 +577,15 @@ const PanelVendedor = ({
                           <div className="flex flex-col gap-3 pt-3 border-t border-gray-100" onClick={e => e.stopPropagation()}>
                             <p className="font-black text-xs text-[#0A3895]">Preparación del pedido: {ped.estadoReparto || 'Buscando repartidor'}</p>
                             {(ped.estadoReparto === 'Buscando repartidor' || ped.estadoReparto === 'Aceptado') && (
-                              <button onClick={() => manejarCambioEstadoPedido(ped.id,'Listo')}
+                              <button onClick={() => manejarCambioEstadoPedido(ped.id, 'Listo')}
                                 className="bg-[#0A3895] text-white rounded-xl p-3 font-bold">✓ Pedido listo</button>
                             )}
                             {ped.estadoReparto === 'Listo' && ped.repartidorAsignado && (
-                              <button onClick={() => manejarCambioEstadoPedido(ped.id,'Repartidor llegó')}
+                              <button onClick={() => manejarCambioEstadoPedido(ped.id, 'Repartidor llegó')}
                                 className="bg-[#FF8C00] text-white rounded-xl p-3 font-bold">🛵 El repartidor llegó</button>
                             )}
                             {ped.estadoReparto === 'Listo' && !ped.repartidorAsignado && <p>Esperando que un repartidor acepte el pedido.</p>}
-                            {['Repartidor llegó','Recibido','En camino','En el punto de entrega'].includes(ped.estadoReparto) &&
+                            {['Repartidor llegó', 'Recibido', 'En camino', 'En el punto de entrega'].includes(ped.estadoReparto) &&
                               <p>Entrega a cargo del repartidor: {ped.estadoReparto}</p>}
                           </div>
                         )}
@@ -559,31 +598,28 @@ const PanelVendedor = ({
                             <div className="grid grid-cols-3 gap-1.5">
                               <button
                                 onClick={() => manejarCambioEstadoPedido(ped.id, 'En preparación')}
-                                className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${
-                                  ped.estado === 'En preparación'
-                                    ? 'bg-[#0A3895] text-white border-[#0A3895]'
-                                    : 'bg-gray-50 text-gray-700 border-gray-200'
-                                }`}
+                                className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${ped.estado === 'En preparación'
+                                  ? 'bg-[#0A3895] text-white border-[#0A3895]'
+                                  : 'bg-gray-50 text-gray-700 border-gray-200'
+                                  }`}
                               >
                                 👨‍🍳 Preparando
                               </button>
                               <button
                                 onClick={() => manejarCambioEstadoPedido(ped.id, 'En camino')}
-                                className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${
-                                  ped.estado === 'En camino'
-                                    ? 'bg-[#FF8C00] text-white border-[#FF8C00]'
-                                    : 'bg-gray-50 text-gray-700 border-gray-200'
-                                }`}
+                                className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${ped.estado === 'En camino'
+                                  ? 'bg-[#FF8C00] text-white border-[#FF8C00]'
+                                  : 'bg-gray-50 text-gray-700 border-gray-200'
+                                  }`}
                               >
                                 🏃‍♂️ En camino
                               </button>
                               <button
                                 onClick={() => manejarCambioEstadoPedido(ped.id, 'En el punto de entrega')}
-                                className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${
-                                  ped.estado === 'En el punto de entrega'
-                                    ? 'bg-[#22C55E] text-white border-[#22C55E]'
-                                    : 'bg-gray-50 text-gray-700 border-gray-200'
-                                }`}
+                                className={`py-2 px-2 rounded-xl font-bold text-[10px] border transition-all ${ped.estado === 'En el punto de entrega'
+                                  ? 'bg-[#22C55E] text-white border-[#22C55E]'
+                                  : 'bg-gray-50 text-gray-700 border-gray-200'
+                                  }`}
                               >
                                 📍 En el lugar
                               </button>
@@ -603,11 +639,10 @@ const PanelVendedor = ({
                                   ? 'Confirmar entrega del pedido'
                                   : 'Primero selecciona En camino y después En el lugar'}
                                 onClick={() => manejarCambioEstadoPedido(ped.id, 'Entregado')}
-                                className={`flex-1 bg-[#22C55E] text-white font-black text-xs py-2.5 rounded-xl shadow-sm ${
-                                  ped.estado === 'En el punto de entrega'
-                                    ? 'hover:bg-[#16a34a]'
-                                    : 'opacity-40 cursor-not-allowed'
-                                }`}
+                                className={`flex-1 bg-[#22C55E] text-white font-black text-xs py-2.5 rounded-xl shadow-sm ${ped.estado === 'En el punto de entrega'
+                                  ? 'hover:bg-[#16a34a]'
+                                  : 'opacity-40 cursor-not-allowed'
+                                  }`}
                               >
                                 ✓ Marcar Entregado
                               </button>
@@ -656,11 +691,10 @@ const PanelVendedor = ({
             className="flex flex-col items-center cursor-pointer"
           >
             <div
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                tabActiva === 'productos'
-                  ? 'bg-[#0A3895] shadow-lg -mt-5 border-4 border-white text-white text-xl'
-                  : 'text-gray-400 text-2xl'
-              }`}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${tabActiva === 'productos'
+                ? 'bg-[#0A3895] shadow-lg -mt-5 border-4 border-white text-white text-xl'
+                : 'text-gray-400 text-2xl'
+                }`}
             >
               🏪
             </div>
@@ -675,11 +709,10 @@ const PanelVendedor = ({
             className="flex flex-col items-center cursor-pointer relative"
           >
             <div
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                tabActiva === 'pedidos'
-                  ? 'bg-[#0A3895] shadow-lg -mt-5 border-4 border-white text-white text-xl'
-                  : 'text-gray-400 text-2xl'
-              }`}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${tabActiva === 'pedidos'
+                ? 'bg-[#0A3895] shadow-lg -mt-5 border-4 border-white text-white text-xl'
+                : 'text-gray-400 text-2xl'
+                }`}
             >
               📋
             </div>
@@ -699,11 +732,10 @@ const PanelVendedor = ({
             className="flex flex-col items-center cursor-pointer"
           >
             <div
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                tabActiva === 'cuenta'
-                  ? 'bg-[#0A3895] shadow-lg -mt-5 border-4 border-white text-white text-xl'
-                  : 'text-gray-400 text-2xl'
-              }`}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${tabActiva === 'cuenta'
+                ? 'bg-[#0A3895] shadow-lg -mt-5 border-4 border-white text-white text-xl'
+                : 'text-gray-400 text-2xl'
+                }`}
             >
               🏠
             </div>
@@ -743,11 +775,10 @@ const PanelVendedor = ({
                   <button
                     type="button"
                     onClick={() => setModoEntrega('propio')}
-                    className={`p-3 rounded-2xl border-2 text-left transition-all ${
-                      modoEntrega === 'propio'
-                        ? 'border-[#0A3895] bg-blue-50/60'
-                        : 'border-gray-200 bg-white'
-                    }`}
+                    className={`p-3 rounded-2xl border-2 text-left transition-all ${modoEntrega === 'propio'
+                      ? 'border-[#0A3895] bg-blue-50/60'
+                      : 'border-gray-200 bg-white'
+                      }`}
                   >
                     <span className="text-xl block mb-1">🚶‍♂️</span>
                     <p className="font-black text-xs text-gray-900">Yo lo voy a dejar</p>
@@ -757,11 +788,10 @@ const PanelVendedor = ({
                   <button
                     type="button"
                     onClick={() => setModoEntrega('repartidor')}
-                    className={`p-3 rounded-2xl border-2 text-left transition-all ${
-                      modoEntrega === 'repartidor'
-                        ? 'border-[#FF8C00] bg-orange-50/60'
-                        : 'border-gray-200 bg-white'
-                    }`}
+                    className={`p-3 rounded-2xl border-2 text-left transition-all ${modoEntrega === 'repartidor'
+                      ? 'border-[#FF8C00] bg-orange-50/60'
+                      : 'border-gray-200 bg-white'
+                      }`}
                   >
                     <span className="text-xl block mb-1">🛵</span>
                     <p className="font-black text-xs text-gray-900">Necesito Repartidor</p>
@@ -1076,11 +1106,10 @@ const PanelVendedor = ({
                             type="button"
                             key={`${dia}_${bloque}`}
                             onClick={() => alternarCeldaHorario(dia, bloque)}
-                            className={`h-6 rounded-md text-[9px] font-black transition-all border ${
-                              activo
-                                ? 'bg-[#FF8C00] text-white border-[#FF8C00] shadow-xs'
-                                : 'bg-white text-gray-300 border-gray-200 hover:border-blue-300'
-                            }`}
+                            className={`h-6 rounded-md text-[9px] font-black transition-all border ${activo
+                              ? 'bg-[#FF8C00] text-white border-[#FF8C00] shadow-xs'
+                              : 'bg-white text-gray-300 border-gray-200 hover:border-blue-300'
+                              }`}
                           >
                             {activo ? '✓' : ''}
                           </button>
