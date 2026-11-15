@@ -428,6 +428,7 @@ function App() {
 
       {pantallaActual === 'home' && (
         <HomeComprador
+        usuarioId={usuarioActual.id_usuario || usuarioActual.correo}
           productos={productosCatalogo}
           cargandoProductos={cargandoProductos}
           errorProductos={errorProductos}

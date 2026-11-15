@@ -26,6 +26,71 @@ const MiPerfil = ({
 }) => {
   const [modalActivo, setModalActivo] = useState(null);
 
+  const claveDirecciones = `campy_direcciones_${usuario?.id_usuario ?? usuario?.correo ?? 'invitado'}`;
+
+  const [direcciones, setDirecciones] = useState(() => {
+    try {
+      const guardadas = localStorage.getItem(claveDirecciones);
+
+      if (guardadas !== null) {
+        const lista = JSON.parse(guardadas);
+        if (Array.isArray(lista)) return lista;
+      }
+    } catch (error) {
+      console.error('Error al cargar direcciones:', error);
+    }
+
+    return [
+      {
+        id: 'inicial-1',
+        nombre: 'Edificio L - Salón L3',
+        referencia: 'Clases de 10:00 AM a 12:00 PM'
+      },
+      {
+        id: 'inicial-2',
+        nombre: 'Biblioteca Central',
+        referencia: 'Mesas de estudio planta baja'
+      }
+    ];
+  });
+
+  const [mostrarNuevaDireccion, setMostrarNuevaDireccion] = useState(false);
+  const [nombreDireccion, setNombreDireccion] = useState('');
+  const [referenciaDireccion, setReferenciaDireccion] = useState('');
+
+  const guardarDirecciones = (lista) => {
+    setDirecciones(lista);
+    localStorage.setItem(claveDirecciones, JSON.stringify(lista));
+  };
+
+  const agregarDireccion = () => {
+    const nombre = nombreDireccion.trim();
+    const referencia = referenciaDireccion.trim();
+
+    if (!nombre) {
+      alert('Escribe el punto de entrega.');
+      return;
+    }
+
+    const nuevaDireccion = {
+      id: Date.now().toString(),
+      nombre,
+      referencia
+    };
+
+    guardarDirecciones([...direcciones, nuevaDireccion]);
+    setNombreDireccion('');
+    setReferenciaDireccion('');
+    setMostrarNuevaDireccion(false);
+  };
+
+  const eliminarDireccion = (id) => {
+    guardarDirecciones(
+      direcciones.filter((direccion) => direccion.id !== id)
+    );
+  };
+
+
 
 const usuarioTarjetas = usuario?.id_usuario || usuario?.correo;
 
@@ -731,32 +796,115 @@ const actualizarTarjetas = () => {
 )}
 
 
+        
         {/* MODAL: DIRECCIONES */}
         {modalActivo === 'direcciones' && (
           <div className="absolute bottom-0 left-0 w-full bg-white rounded-t-[30px] p-6 pb-10 z-50 animate-[slideUp_0.3s_ease-out]">
+
             <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6"></div>
-            <h2 className="text-xl font-black text-[#22C55E] mb-6">Mis Direcciones en ITO</h2>
-            <div className="flex flex-col gap-3 mb-6">
-              <div className="border border-gray-200 rounded-2xl p-4 flex justify-between items-center shadow-sm border-l-4 border-l-[#22C55E]">
-                <div>
-                  <h3 className="font-bold text-gray-800 text-sm">Edificio L - Salón L3</h3>
-                  <p className="text-gray-400 text-[10px] mt-0.5">Clases de 10:00 AM a 12:00 PM</p>
+
+            <h2 className="text-xl font-black text-[#22C55E] mb-6">
+              Mis Direcciones en ITO
+            </h2>
+
+            <div className="flex flex-col gap-3 mb-5 max-h-[40vh] overflow-y-auto">
+
+              {direcciones.length === 0 && (
+                <p className="text-center text-gray-400 text-sm py-5">
+                  Todavía no tienes puntos de entrega guardados.
+                </p>
+              )}
+
+              {direcciones.map((direccion) => (
+                <div
+                  key={direccion.id}
+                  className="border border-gray-200 rounded-2xl p-4 flex justify-between items-center shadow-sm border-l-4 border-l-[#22C55E]"
+                >
+                  <div className="flex-1 pr-3">
+                    <h3 className="font-bold text-gray-800 text-sm">
+                      {direccion.nombre}
+                    </h3>
+
+                    {direccion.referencia && (
+                      <p className="text-gray-400 text-[10px] mt-0.5">
+                        {direccion.referencia}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => eliminarDireccion(direccion.id)}
+                    className="text-gray-400 hover:text-red-500 transition-colors p-2"
+                    aria-label={`Eliminar ${direccion.nombre}`}
+                  >
+                    🗑️
+                  </button>
                 </div>
-                <button className="text-gray-300 hover:text-red-500 transition-colors">🗑️</button>
-              </div>
-              <div className="border border-gray-200 rounded-2xl p-4 flex justify-between items-center shadow-sm">
-                <div>
-                  <h3 className="font-bold text-gray-800 text-sm">Biblioteca Central</h3>
-                  <p className="text-gray-400 text-[10px] mt-0.5">Mesas de estudio planta baja</p>
-                </div>
-                <button className="text-gray-300 hover:text-red-500 transition-colors">🗑️</button>
-              </div>
+              ))}
             </div>
-            <button onClick={() => setModalActivo(null)} className="w-full bg-[#22C55E] hover:bg-[#16a34a] text-white font-bold py-4 rounded-xl shadow-lg shadow-green-200 active:scale-95 transition-transform">
+
+            {!mostrarNuevaDireccion ? (
+              <button
+                type="button"
+                onClick={() => setMostrarNuevaDireccion(true)}
+                className="w-full border-2 border-[#22C55E] text-[#16a34a] font-bold py-3 rounded-xl mb-4"
+              >
+                + Agregar nuevo
+              </button>
+            ) : (
+              <div className="bg-green-50 rounded-2xl p-4 mb-4 flex flex-col gap-3">
+
+                <input
+                  type="text"
+                  value={nombreDireccion}
+                  onChange={(e) => setNombreDireccion(e.target.value)}
+                  placeholder="Ej. Edificio K - Salón K2"
+                  maxLength={100}
+                  className="w-full p-3 rounded-xl border border-gray-200 text-sm"
+                />
+
+                <input
+                  type="text"
+                  value={referenciaDireccion}
+                  onChange={(e) => setReferenciaDireccion(e.target.value)}
+                  placeholder="Referencia (opcional)"
+                  maxLength={200}
+                  className="w-full p-3 rounded-xl border border-gray-200 text-sm"
+                />
+
+                <button
+                  type="button"
+                  onClick={agregarDireccion}
+                  className="w-full bg-[#22C55E] text-white font-bold py-3 rounded-xl"
+                >
+                  Guardar dirección
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMostrarNuevaDireccion(false)}
+                  className="text-gray-500 text-sm py-2"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setMostrarNuevaDireccion(false);
+                setModalActivo(null);
+              }}
+              className="w-full bg-[#22C55E] hover:bg-[#16a34a] text-white font-bold py-4 rounded-xl shadow-lg shadow-green-200"
+            >
               Listo
             </button>
+
           </div>
         )}
+
 
       </div>
     </div>

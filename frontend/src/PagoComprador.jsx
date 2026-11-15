@@ -123,7 +123,7 @@ export default function PagoComprador({
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
 
             <button
               type="button"
@@ -157,9 +157,50 @@ export default function PagoComprador({
               Tarjeta
             </button>
 
+<button
+  type="button"
+  aria-pressed={metodo === 'efectivo'}
+  onClick={() => {
+    setMetodo('efectivo');
+    setMensaje('');
+  }}
+  className={`rounded-xl border-2 p-3 text-xs font-bold ${
+    metodo === 'efectivo'
+      ? 'border-[#0A3895] bg-white'
+      : 'border-gray-200 bg-white'
+  }`}
+>
+  Efectivo
+</button>
+
+
           </div>
 
+{metodo === 'efectivo' && (
+  <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-4">
+    <h4 className="font-bold text-green-700 mb-2">
+      Pago en efectivo
+    </h4>
+
+    <p className="text-xs text-gray-700">
+      Pagarás ${Number(total).toFixed(2)} MXN en efectivo
+      cuando recibas tu pedido.
+    </p>
+
+    <p className="text-xs text-gray-500 mt-2">
+      No necesitas registrar una tarjeta ni subir
+      un comprobante de transferencia.
+    </p>
+
+    <p className="text-xs font-bold text-green-700 mt-3">
+      Método de pago seleccionado: Efectivo
+    </p>
+  </div>
+)}
+
+
           {metodo === 'transferencia' && (
+            
             <div className="mt-3 bg-white rounded-xl p-3 space-y-2 text-xs">
 
               <h4 className="font-bold text-[#0A3895]">
