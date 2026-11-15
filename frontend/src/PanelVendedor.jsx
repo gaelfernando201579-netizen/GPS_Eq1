@@ -543,7 +543,7 @@ const PanelVendedor = ({
                         </div>
 
                         <div className="flex justify-between items-center border-t border-gray-100 pt-2.5 mb-3">
-                          <span className="text-xs font-bold text-gray-400 uppercase">Total ({ped.metodoPago || 'Efectivo'})</span>
+                          <span className="text-xs font-bold text-gray-400 uppercase">Total ({ped.metodoPago || 'Sin elegir'})</span>
                           <span className="text-lg font-black text-[#FF8C00]">${Number(ped.total).toFixed(2)}</span>
                         </div>
 
@@ -650,8 +650,8 @@ const PanelVendedor = ({
                           </div>
                         )}
 
-                        {/* MOSTRAR CALIFICACIÓN DEL CLIENTE (Forzado para diseño) */}
-                        {estaEntregado && (
+                        {/* CALIFICACIÓN REAL DEL COMPRADOR */}
+                        {estaEntregado && ped.calificacion && Number(ped.calificacion.estrellas) >= 1 && Number(ped.calificacion.estrellas) <= 5 && (
                           <div className="mt-3 pt-3 border-t border-gray-100">
                             <p className="text-[10px] font-black uppercase text-[#0A3895] mb-1">
                               Calificación del Comprador:
@@ -659,17 +659,19 @@ const PanelVendedor = ({
                             <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
                               <div className="flex items-center gap-1 mb-1">
                                 {[...Array(5)].map((_, i) => (
-                                  <span key={i} className={`text-lg ${i < (ped.calificacion?.estrellas || 5) ? 'text-[#FF8C00]' : 'text-gray-300'}`}>
+                                  <span key={i} className={`text-lg ${i < Number(ped.calificacion.estrellas) ? 'text-[#FF8C00]' : 'text-gray-300'}`}>
                                     ★
                                   </span>
                                 ))}
                                 <span className="ml-2 font-bold text-gray-800 text-xs">
-                                  {ped.calificacion?.estrellas || 5} de 5
+                                  {ped.calificacion.estrellas} de 5
                                 </span>
                               </div>
-                              <p className="text-xs text-gray-600 italic">
-                                "{ped.calificacion?.comentario || '¡Excelente servicio y muy rico!'}"
-                              </p>
+                              {ped.calificacion.comentario?.trim() && (
+                                <p className="text-xs text-gray-600 italic">
+                                  "{ped.calificacion.comentario}"
+                                </p>
+                              )}
                             </div>
                           </div>
                         )}

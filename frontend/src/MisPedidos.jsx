@@ -19,7 +19,8 @@ const MisPedidos = ({
   cargandoPedidos = false,
   errorPedidos = '',
   cambiarEstadoPedido,
-  usuarioId
+  usuarioId,
+  onCalificacionGuardada = () => {}
 }) => {
 
   const [errorConfirmacion, setErrorConfirmacion] = useState('');
@@ -76,6 +77,7 @@ const MisPedidos = ({
         throw new Error(datos.mensaje || 'No se pudo guardar la calificación.');
       }
       setCalificadosLocal(prev => ({ ...prev, [modalCalificacion]: true }));
+      onCalificacionGuardada();
       setModalCalificacion(null);
       setEstrellas(5);
       setComentario('');

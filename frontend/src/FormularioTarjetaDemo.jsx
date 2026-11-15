@@ -12,12 +12,16 @@ export default function FormularioTarjetaDemo({
   const [vencimiento, setVencimiento] = useState('');
   const [cvv, setCvv] = useState('');
   const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
 
-  function guardar(e) {
+ async function guardar(e) {
     e.preventDefault();
 
+    setError('');
+    setGuardando(true);
+
     try {
-      const tarjeta = guardarTarjeta(usuarioId, {
+      const tarjeta = await guardarTarjeta(usuarioId, {
         titular,
         numero,
         vencimiento,
@@ -26,10 +30,11 @@ export default function FormularioTarjetaDemo({
 
       setNumero('');
       setCvv('');
-
-      alGuardar?.(tarjeta);
+      await alGuardar?.(tarjeta);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setGuardando(false);
     }
   }
 
@@ -144,9 +149,10 @@ export default function FormularioTarjetaDemo({
 
         <button
           type="submit"
-          className="flex-1 rounded-xl bg-[#FF8C00] px-3 py-3 font-bold text-white text-sm"
+          disabled={guardando}
+          className="flex-1 rounded-xl bg-[#FF8C00] px-3 py-3 font-bold text-white text-sm disabled:opacity-60"
         >
-          Guardar tarjeta
+          {guardando ? 'Guardando en Supabase...' : 'Guardar tarjeta'}
         </button>
       </div>
     </form>

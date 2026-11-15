@@ -1,82 +1,85 @@
 
-const clave = (usuarioId) =>
-  `campy_tarjetas_prueba_${String(usuarioId || 'sin_cuenta')}`;
+const API_URL =
+  import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-export function obtenerTarjetas(usuarioId) {
-  if (!usuarioId) return [];
+async function peticion(ruta, opciones = {}) {
+  const token = localStorage.getItem('campy_token');
 
-  try {
-    const datos = JSON.parse(
-      localStorage.getItem(clave(usuarioId)) || '[]'
-    );
-
-    return Array.isArray(datos)
-      ? datos.filter(t => t && t.id && t.ultimos4)
-      : [];
-  } catch {
-    return [];
+  if (!token) {
+    throw new Error('Inicia sesión nuevamente.');
   }
+
+  const respuesta = await fetch(`${API_URL}${ruta}`, {
+    ...opciones,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...opciones.headers
+    }
+  });
+
+  const datos = await respuesta.json().catch(() => ({}));
+
+  if (!respuesta.ok) {
+    throw new Error(
+      datos.mensaje || 'Error al consultar las tarjetas.'
+    );
+  }
+
+  return datos;
 }
 
-export function guardarTarjeta(usuarioId, datos) {
-  if (!usuarioId) {
-    throw new Error('Inicia sesión para agregar una tarjeta.');
-  }
+const notificar = () => {
+  window.dispatchEvent(
+    new Event('campy-tarjetas-actualizadas')
+  );
+};
 
+export async function obtenerTarjetas() {
+  return peticion('/api/tarjetas');
+}
+
+export async function guardarTarjeta(_usuarioId, datos) {
   const numero = String(datos.numero || '').replace(/\D/g, '');
-  const vencimiento = String(datos.vencimiento || '');
-  const titular = String(datos.titular || '').trim();
 
   if (
     numero !== '4242424242424242' ||
-    vencimiento !== '12/30' ||
+    datos.vencimiento !== '12/30' ||
     String(datos.cvv) !== '123'
   ) {
     throw new Error(
-      'Utiliza la tarjeta de prueba 4242 4242 4242 4242, 12/30 y 123.'
+      'Usa únicamente la tarjeta de prueba 4242 4242 4242 4242, 12/30 y 123.'
     );
   }
 
-  if (!titular) {
-    throw new Error('Escribe el nombre del titular.');
-  }
+  const tarjeta = await peticion('/api/tarjetas', {
+    method: 'POST',
+    body: JSON.stringify({
+      titular: datos.titular.trim(),
+      marca: 'Visa (prueba)',
+      ultimos4: '4242',
+      vencimiento: '12/30'
+    })
+  });
 
-  const tarjeta = {
-    id: `demo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    titular: titular.slice(0, 80),
-    vencimiento,
-    ultimos4: numero.slice(-4),
-    marca: 'Visa (prueba)'
-  };
-
-  const tarjetas = [
-    ...obtenerTarjetas(usuarioId),
-    tarjeta
-  ];
-
-  localStorage.setItem(
-    clave(usuarioId),
-    JSON.stringify(tarjetas)
-  );
-
-  window.dispatchEvent(
-    new CustomEvent('campy-tarjetas-actualizadas')
-  );
-
+  notificar();
   return tarjeta;
 }
 
-export function eliminarTarjeta(usuarioId, id) {
-  const tarjetas = obtenerTarjetas(usuarioId).filter(
-    t => t.id !== id
+export async function eliminarTarjeta(_usuarioId, id) {
+  await peticion(
+    `/api/tarjetas/${encodeURIComponent(id)}`,
+    { method: 'DELETE' }
   );
 
-  localStorage.setItem(
-    clave(usuarioId),
-    JSON.stringify(tarjetas)
+  notificar();
+}
+
+export async function predeterminarTarjeta(id) {
+  await peticion(
+    `/api/tarjetas/${encodeURIComponent(id)}/predeterminada`,
+    { method: 'PATCH' }
   );
 
-  window.dispatchEvent(
-    new CustomEvent('campy-tarjetas-actualizadas')
-  );
+  notificar();
 }

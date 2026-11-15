@@ -449,6 +449,7 @@ function App() {
           cargandoPedidos={cargandoPedidos}
           errorPedidos={errorPedidos}
           cambiarEstadoPedido={confirmarRecepcionPedido}
+          onCalificacionGuardada={() => setRecargaCatalogo(n => n + 1)}
           irAInicio={() => setPantallaActual('home')}
           irAPerfil={() => setPantallaActual('perfil')}
         />

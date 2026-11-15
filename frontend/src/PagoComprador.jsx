@@ -15,6 +15,25 @@ const dinero = monto =>
     currency: 'MXN'
   }).format(Number(monto) || 0);
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+async function consultarMetodoPago(pedidoId, metodo = 'GET', datos = null) {
+  const token = localStorage.getItem('campy_token');
+  if (!token) throw new Error('Inicia sesión para gestionar el pago.');
+
+  const respuesta = await fetch(`${API_URL}/api/pedidos/${pedidoId}/metodo-pago`, {
+    method: metodo,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(datos ? { 'Content-Type': 'application/json' } : {})
+    },
+    ...(datos ? { body: JSON.stringify(datos) } : {})
+  });
+  const contenido = await respuesta.json().catch(() => ({}));
+  if (!respuesta.ok) throw new Error(contenido.mensaje || 'No se pudo consultar el método de pago.');
+  return contenido;
+}
+
 export default function PagoComprador({
   pedidoId,
   total,
@@ -26,37 +45,56 @@ export default function PagoComprador({
   const [tarjetaSeleccionada, setTarjetaSeleccionada] = useState('');
   const [agregando, setAgregando] = useState(false);
   const [mensaje, setMensaje] = useState('');
+  const [guardandoMetodo, setGuardandoMetodo] = useState(false);
   const [comprobante, setComprobante] = useState(null);
   const [vistaPrevia, setVistaPrevia] = useState('');
 
   const archivoInput = useRef(null);
 
   useEffect(() => {
-    const actualizar = () => {
-      setTarjetas(obtenerTarjetas(usuarioId));
+    let vigente = true;
+    const actualizar = async () => {
+      try {
+        const lista = await obtenerTarjetas(usuarioId);
+        if (!vigente) return;
+        setTarjetas(lista);
+        setTarjetaSeleccionada(anterior =>
+          lista.some(t => t.id === anterior)
+            ? anterior
+            : (lista.find(t => t.predeterminada)?.id || '')
+        );
+      } catch (error) {
+        if (vigente) setMensaje(error.message);
+      }
     };
 
     actualizar();
-
-    window.addEventListener(
-      'campy-tarjetas-actualizadas',
-      actualizar
-    );
-
+    window.addEventListener('campy-tarjetas-actualizadas', actualizar);
     return () => {
-      window.removeEventListener(
-        'campy-tarjetas-actualizadas',
-        actualizar
-      );
+      vigente = false;
+      window.removeEventListener('campy-tarjetas-actualizadas', actualizar);
     };
   }, [usuarioId]);
 
   useEffect(() => {
+    let vigente = true;
     setMetodo('');
-    setTarjetaSeleccionada('');
     setComprobante(null);
     setAgregando(false);
     setMensaje('');
+
+    const cargarSeleccion = async () => {
+      try {
+        const guardado = await consultarMetodoPago(pedidoId);
+        if (!vigente) return;
+        setMetodo((guardado.metodo || '').toLowerCase());
+        if (guardado.idTarjeta) setTarjetaSeleccionada(guardado.idTarjeta);
+      } catch (error) {
+        if (vigente) setMensaje(error.message);
+      }
+    };
+    if (pedidoId) cargarSeleccion();
+    return () => { vigente = false; };
   }, [pedidoId]);
 
   useEffect(() => {
@@ -70,6 +108,27 @@ export default function PagoComprador({
 
     return () => URL.revokeObjectURL(url);
   }, [comprobante]);
+
+  const guardarMetodoPago = async () => {
+    if (metodo === 'tarjeta' && !tarjetaSeleccionada) {
+      setMensaje('Selecciona una tarjeta de prueba antes de guardar.');
+      return;
+    }
+
+    setGuardandoMetodo(true);
+    setMensaje('');
+    try {
+      const guardado = await consultarMetodoPago(pedidoId, 'PUT', {
+        metodo,
+        idTarjeta: metodo === 'tarjeta' ? tarjetaSeleccionada : null
+      });
+      setMensaje(guardado.mensaje);
+    } catch (error) {
+      setMensaje(error.message);
+    } finally {
+      setGuardandoMetodo(false);
+    }
+  };
 
   const seleccionarArchivo = e => {
     const file = e.target.files?.[0];
@@ -324,11 +383,12 @@ export default function PagoComprador({
                 <FormularioTarjetaDemo
                   usuarioId={usuarioId}
                   alCancelar={() => setAgregando(false)}
-                  alGuardar={t => {
-                    setTarjetas(obtenerTarjetas(usuarioId));
+                  alGuardar={async t => {
+                    const lista = await obtenerTarjetas(usuarioId);
+                    setTarjetas(lista);
                     setTarjetaSeleccionada(t.id);
                     setAgregando(false);
-                    setMensaje('Tarjeta agregada correctamente.');
+                    setMensaje('Tarjeta de prueba guardada en Supabase.');
                   }}
                 />
               ) : (
@@ -341,20 +401,23 @@ export default function PagoComprador({
                 </button>
               )}
 
-              <button
-                type="button"
-                disabled={!tarjetaSeleccionada}
-                onClick={() =>
-                  setMensaje(
-                    'Operación de prueba completada. No se realizó ningún cargo bancario ni se actualizó el pago en Supabase.'
-                  )
-                }
-                className="w-full rounded-xl bg-[#FF8C00] text-white font-bold py-3 disabled:opacity-40"
-              >
-                Pagar {dinero(total)}
-              </button>
+              <p className="text-xs text-gray-500">
+                La tarjeta de prueba solo identifica el método elegido.
+                No se ejecuta ningún cargo bancario.
+              </p>
 
             </div>
+          )}
+
+          {metodo && (
+            <button
+              type="button"
+              disabled={guardandoMetodo || (metodo === 'tarjeta' && !tarjetaSeleccionada)}
+              onClick={guardarMetodoPago}
+              className="mt-3 w-full rounded-xl bg-[#FF8C00] text-white font-bold py-3 disabled:opacity-50"
+            >
+              {guardandoMetodo ? 'Guardando en Supabase...' : 'Guardar método de pago'}
+            </button>
           )}
 
           {mensaje && (

@@ -28,10 +28,19 @@ export async function obtenerProductos(req, res) {
         p.imagen_url,
         p.estado,
         c.nombre AS categoria,
-        u.nombre AS nombre_vendedor
+        u.nombre AS nombre_vendedor,
+        cal.calificacion,
+        cal.num_resenas
       FROM public.productos p
       LEFT JOIN public.categorias c ON c.id_categoria = p.id_categoria
       LEFT JOIN public.usuarios u ON u.id_usuario = p.id_vendedor
+      LEFT JOIN LATERAL (
+        SELECT ROUND(AVG(cp.estrellas)::numeric, 1) AS calificacion,
+               COUNT(DISTINCT cp.id_pedido)::integer AS num_resenas
+        FROM public.detalle_pedido dp
+        JOIN public.calificaciones_pedidos cp ON cp.id_pedido = dp.id_pedido
+        WHERE dp.id_producto = p.id_producto
+      ) cal ON true
       ${filtros.length ? `WHERE ${filtros.join(' AND ')}` : ''}
       ORDER BY p.id_producto ASC
     `;

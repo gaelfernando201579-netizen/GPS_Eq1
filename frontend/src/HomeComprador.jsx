@@ -394,13 +394,12 @@ const HomeComprador = ({
                       {producto.tienda}
                     </p>
 
-                    {/* ETIQUETA DE ESTRELLAS DE PRODUCTO */}
-                    <span className="text-[9px] font-bold text-gray-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 whitespace-nowrap">
-                      ⭐ {producto.calificacion || '4.8'}
-                      <span className="font-medium text-gray-400">
-                        ({producto.numResenas || '24'})
+                    {Number(producto.num_resenas) > 0 && producto.calificacion != null && (
+                      <span className="text-[9px] font-bold text-gray-600 bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 whitespace-nowrap" title="Promedio de calificaciones de pedidos que incluyen este producto">
+                        ⭐ {Number(producto.calificacion).toFixed(1)}
+                        <span className="font-medium text-gray-400">({producto.num_resenas})</span>
                       </span>
-                    </span>
+                    )}
                   </div>
 
                   <p className="text-[#FF8C00] font-black text-sm mt-1">
@@ -771,11 +770,12 @@ const HomeComprador = ({
                     {productoSeleccionado.tienda}
                   </span>
 
-                  {/* ETIQUETA DE ESTRELLAS DE PRODUCTO EN EL MODAL */}
-                  <span className="text-[10px] font-bold text-gray-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full ml-auto whitespace-nowrap">
-                    ⭐ {productoSeleccionado.calificacion || '4.8'}
-                    ({productoSeleccionado.numResenas || '24'})
-                  </span>
+                  {Number(productoSeleccionado.num_resenas) > 0 && productoSeleccionado.calificacion != null && (
+                    <span className="text-[10px] font-bold text-gray-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full ml-auto whitespace-nowrap" title="Promedio de calificaciones de pedidos que incluyen este producto">
+                      ⭐ {Number(productoSeleccionado.calificacion).toFixed(1)}
+                      ({productoSeleccionado.num_resenas})
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-start gap-2">

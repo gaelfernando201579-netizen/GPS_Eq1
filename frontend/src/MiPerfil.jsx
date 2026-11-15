@@ -4,7 +4,8 @@ import logoCampy from './assets/logo.png';
 import FormularioTarjetaDemo from './FormularioTarjetaDemo.jsx';
 import {
   obtenerTarjetas,
-  eliminarTarjeta
+  eliminarTarjeta,
+  predeterminarTarjeta
 } from './tarjetasDemo.js';
 
 
@@ -97,15 +98,24 @@ const usuarioTarjetas = usuario?.id_usuario || usuario?.correo;
 const [metodoPago, setMetodoPago] = useState('efectivo');
 const [agregarTarjeta, setAgregarTarjeta] = useState(false);
 
-const [tarjetas, setTarjetas] = useState(() =>
-  obtenerTarjetas(usuarioTarjetas)
-);
-
+const [tarjetas, setTarjetas] = useState([]);
 const [tarjetaElegida, setTarjetaElegida] = useState('');
+const [errorTarjetas, setErrorTarjetas] = useState('');
 
-const actualizarTarjetas = () => {
-  setTarjetas(obtenerTarjetas(usuarioTarjetas));
+const actualizarTarjetas = async () => {
+  try {
+    const lista = await obtenerTarjetas();
+    setTarjetas(lista);
+    setTarjetaElegida(lista.find(t => t.predeterminada)?.id || '');
+    setErrorTarjetas('');
+  } catch (error) {
+    setErrorTarjetas(error.message);
+  }
 };
+
+React.useEffect(() => {
+  if (usuarioTarjetas) actualizarTarjetas();
+}, [usuarioTarjetas]);
 
 
   // Estados para editar perfil básico de comprador
@@ -705,6 +715,10 @@ const actualizarTarjetas = () => {
           </label>
         ))}
 
+        {errorTarjetas && (
+          <p role="alert" className="text-xs text-red-600">{errorTarjetas}</p>
+        )}
+
         {metodoPago === 'tarjeta' && (
           <div className="space-y-3">
 
@@ -717,22 +731,34 @@ const actualizarTarjetas = () => {
                   type="radio"
                   name="tarjeta-guardada"
                   checked={tarjetaElegida === t.id}
-                  onChange={() => setTarjetaElegida(t.id)}
+                  onChange={async () => {
+                    try {
+                      await predeterminarTarjeta(t.id);
+                      await actualizarTarjetas();
+                    } catch (error) {
+                      setErrorTarjetas(error.message);
+                    }
+                  }}
                 />
 
                 <span className="flex-1">
                   {t.marca} •••• {t.ultimos4} · {t.titular}
+                  {t.predeterminada && (
+                    <span className="block text-green-700 text-[10px] font-bold">
+                      Predeterminada
+                    </span>
+                  )}
                 </span>
 
                 <button
                   type="button"
                   className="text-red-600"
-                  onClick={() => {
-                    eliminarTarjeta(usuarioTarjetas, t.id);
-                    actualizarTarjetas();
-
-                    if (tarjetaElegida === t.id) {
-                      setTarjetaElegida('');
+                  onClick={async () => {
+                    try {
+                      await eliminarTarjeta(usuarioTarjetas, t.id);
+                      await actualizarTarjetas();
+                    } catch (error) {
+                      setErrorTarjetas(error.message);
                     }
                   }}
                 >
@@ -744,8 +770,8 @@ const actualizarTarjetas = () => {
             {agregarTarjeta ? (
               <FormularioTarjetaDemo
                 usuarioId={usuarioTarjetas}
-                alGuardar={t => {
-                  actualizarTarjetas();
+                alGuardar={async t => {
+                  await actualizarTarjetas();
                   setTarjetaElegida(t.id);
                   setAgregarTarjeta(false);
                 }}

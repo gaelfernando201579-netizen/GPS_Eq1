@@ -309,7 +309,8 @@ async function consultarPedidos(req, res, campo) {
               v.nombre AS vendedor_nombre,
               d.id_producto, d.cantidad, d.precio_unitario,
               pr.nombre AS producto_nombre, pr.imagen_url,
-              cal.estrellas AS calificacion_estrellas, cal.comentario AS calificacion_comentario
+              cal.estrellas AS calificacion_estrellas, cal.comentario AS calificacion_comentario,
+              mp.metodo AS metodo_pago
        FROM public.pedidos p
        JOIN public.usuarios c
          ON c.id_usuario = p.id_comprador
@@ -321,6 +322,8 @@ async function consultarPedidos(req, res, campo) {
          ON pr.id_producto = d.id_producto
        LEFT JOIN public.calificaciones_pedidos cal
          ON cal.id_pedido = p.id_pedido
+       LEFT JOIN public.pedido_metodos_pago mp
+         ON mp.pedido_id = p.id_pedido
        WHERE p.${campo} = $1
        ORDER BY p.fecha_pedido DESC,
                 p.id_pedido DESC,
@@ -342,7 +345,7 @@ async function consultarPedidos(req, res, campo) {
           puntoEntrega: fila.punto_entrega_acordado,
           hora: fila.horario_entrega_acordado,
           lugarRecoleccion: 'Por acordar con el vendedor',
-          metodoPago: 'Pendiente',
+          metodoPago: fila.metodo_pago || 'Sin elegir',
           requiereRepartidor: false,
           repartidorAsignado: null,
           notaCancelacion: '',
