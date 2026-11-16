@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import CampyLogin from './CampyLogin';
 import CampyRegistro from './CampyRegistro';
 import HomeComprador from './HomeComprador';
@@ -36,6 +36,11 @@ function App() {
   const [pedidosParaVendedor, setPedidosParaVendedor] = useState([]);
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [errorPedidos, setErrorPedidos] = useState('');
+  const [actualizandoPedidos, setActualizandoPedidos] = useState(false);
+  const consultaPedidosRef = useRef(null);
+  const refrescarPedidos = useCallback(() => {
+    consultaPedidosRef.current?.(true);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -134,33 +139,97 @@ function App() {
   };
 
   useEffect(() => {
-    if (!tokenAuth || pantallaActual === 'login' || pantallaActual === 'repartidor') return;
-    let vigente = true;
-    const vendedor = pantallaActual === 'vendedor';
-    const ruta = vendedor ? '/api/pedidos/vendedor' : '/api/pedidos';
+    if (!tokenAuth || !['pedidos', 'vendedor'].includes(pantallaActual)) {
+      consultaPedidosRef.current = null;
+      return;
+    }
 
-    const cargar = async () => {
-      if (!vendedor) setCargandoPedidos(true);
-      setErrorPedidos('');
+    let vigente = true;
+    let consultando = false;
+    let consultaPendiente = false;
+    let primeraConsulta = true;
+    const esVendedor = pantallaActual === 'vendedor';
+    const ruta = esVendedor ? '/api/pedidos/vendedor' : '/api/pedidos';
+
+    const consultar = async (manual = false) => {
+      if (!vigente) return;
+      if (consultando) {
+        if (manual) consultaPendiente = true;
+        return;
+      }
+      if (!manual && document.visibilityState === 'hidden') return;
+
+      consultando = true;
+      if (primeraConsulta) setCargandoPedidos(true);
+      else if (manual) setActualizandoPedidos(true);
+
       try {
         const respuesta = await fetch(`${API_URL}${ruta}`, {
-          headers: { Authorization: `Bearer ${tokenAuth}` }
+          headers: { Authorization: `Bearer ${tokenAuth}` },
+          cache: 'no-store'
         });
-        const datos = await respuesta.json();
+        const datos = await respuesta.json().catch(() => ({}));
         if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudieron consultar los pedidos.');
         if (!Array.isArray(datos)) throw new Error('La respuesta de pedidos no es válida.');
+
         if (vigente) {
-          if (vendedor) setPedidosParaVendedor(datos);
-          else setPedidosPorCumplir(datos);
+          if (esVendedor) {
+            setPedidosParaVendedor((anteriores) => {
+              const porId = new Map(anteriores.map((pedido) => [String(pedido.id), pedido]));
+              return datos.map((pedido) => {
+                const anterior = porId.get(String(pedido.id));
+                if (!anterior || !anterior.requiereRepartidor) return pedido;
+                return {
+                  ...pedido,
+                  requiereRepartidor: true,
+                  repartidorAsignado: pedido.repartidorAsignado || anterior.repartidorAsignado,
+                  estadoReparto: pedido.estadoReparto || anterior.estadoReparto,
+                  costoProductoRepartidor: anterior.costoProductoRepartidor,
+                  lugarRecoleccion: anterior.lugarRecoleccion,
+                  comisionRepartidor: anterior.comisionRepartidor,
+                  puntoEntrega: anterior.puntoEntrega
+                };
+              });
+            });
+          } else {
+            setPedidosPorCumplir(datos);
+          }
+          setErrorPedidos('');
         }
       } catch (error) {
         if (vigente) setErrorPedidos(error.message || 'No se pudieron consultar los pedidos.');
       } finally {
-        if (vigente) setCargandoPedidos(false);
+        if (vigente) {
+          setCargandoPedidos(false);
+          setActualizandoPedidos(false);
+        }
+        primeraConsulta = false;
+        consultando = false;
+        if (consultaPendiente && vigente) {
+          consultaPendiente = false;
+          consultar(true);
+        }
       }
     };
-    cargar();
-    return () => { vigente = false; };
+
+    consultaPedidosRef.current = consultar;
+    consultar();
+    const intervalo = setInterval(() => consultar(), 8000);
+    const alVolver = () => {
+      if (document.visibilityState === 'visible') consultar();
+    };
+    const alEnfocar = () => consultar();
+
+    document.addEventListener('visibilitychange', alVolver);
+    window.addEventListener('focus', alEnfocar);
+
+    return () => {
+      vigente = false;
+      consultaPedidosRef.current = null;
+      clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', alVolver);
+      window.removeEventListener('focus', alEnfocar);
+    };
   }, [pantallaActual, tokenAuth]);
 
   const procesarCompra = async (itemsComprados, datosEntrega) => {
@@ -370,6 +439,7 @@ function App() {
     setPedidosParaVendedor((prev) =>
       prev.map((p) => (p.id === pedidoId ? { ...p, ...config, estado: pedidoGuardado.estado } : p))
     );
+    refrescarPedidos();
   };
 
   const cambiarEstadoPedidoVendedor = async (pedidoId, nuevoEstado, notaCancelacion = '') => {
@@ -382,6 +452,7 @@ function App() {
     setPedidosPorCumplir((prev) =>
       prev.map((p) => p.id === pedidoId ? { ...p, estado: pedidoGuardado.estado } : p)
     );
+    refrescarPedidos();
   };
 
   // Cuando el vendedor o repartidor cambia el estado (En preparación, En camino, En el punto de entrega, Entregado, Cancelado)
@@ -410,6 +481,7 @@ function App() {
     setPedidosPorCumplir((prev) =>
       prev.map((p) => p.id === pedidoId ? { ...p, estado: datos.pedido.estado } : p)
     );
+    refrescarPedidos();
     return datos.pedido;
   };
 
@@ -458,6 +530,8 @@ function App() {
           pedidosVendedor={pedidosPorCumplir}
           cargandoPedidos={cargandoPedidos}
           errorPedidos={errorPedidos}
+          actualizandoPedidos={actualizandoPedidos}
+          refrescarPedidos={refrescarPedidos}
           cambiarEstadoPedido={confirmarRecepcionPedido}
           onCalificacionGuardada={() => setRecargaCatalogo(n => n + 1)}
           irAInicio={() => setPantallaActual('home')}
@@ -529,6 +603,8 @@ function App() {
           pedidosVendedor={pedidosParaVendedor}
           cargandoPedidos={cargandoPedidos}
           errorPedidos={errorPedidos}
+          actualizandoPedidos={actualizandoPedidos}
+          refrescarPedidos={refrescarPedidos}
           configurarAceptacionPedido={configurarAceptacionPedido}
           cambiarEstadoPedidoVendedor={cambiarEstadoPedidoVendedor}
           volverAModoCliente={() => setPantallaActual('home')}

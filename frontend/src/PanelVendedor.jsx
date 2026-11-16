@@ -15,6 +15,8 @@ const PanelVendedor = ({
   pedidosVendedor = [],
   cargandoPedidos = false,
   errorPedidos = '',
+  actualizandoPedidos = false,
+  refrescarPedidos = () => {},
   configurarAceptacionPedido,
   cambiarEstadoPedidoVendedor,
   volverAModoCliente,
@@ -473,9 +475,19 @@ const PanelVendedor = ({
           {tabActiva === 'pedidos' && (
             <>
               <div className="mb-4">
-                <h3 className="font-black text-base text-gray-900 uppercase tracking-wide">
-                  Pedidos por Cumplir
-                </h3>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <h3 className="font-black text-base text-gray-900 uppercase tracking-wide">
+                    Pedidos por Cumplir
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={refrescarPedidos}
+                    disabled={cargandoPedidos || actualizandoPedidos}
+                    className="rounded-xl bg-blue-50 text-[#0A3895] px-3 py-2 text-xs font-bold disabled:opacity-50"
+                  >
+                    {cargandoPedidos || actualizandoPedidos ? 'Actualizando...' : 'Actualizar'}
+                  </button>
+                </div>
                 <p className="text-xs text-gray-500">
                   Toca un pedido nuevo para aceptarlo, elegir si lo llevas tú o un repartidor, y actualizar su estado.
                 </p>
@@ -749,7 +761,7 @@ const PanelVendedor = ({
 
           <button
             type="button"
-            onClick={() => setTabActiva('pedidos')}
+            onClick={() => { setTabActiva('pedidos'); refrescarPedidos(); }}
             className="flex flex-col items-center cursor-pointer relative"
           >
             <div

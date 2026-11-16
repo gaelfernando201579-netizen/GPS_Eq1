@@ -19,6 +19,8 @@ const MisPedidos = ({
   pedidosVendedor = [],
   cargandoPedidos = false,
   errorPedidos = '',
+  actualizandoPedidos = false,
+  refrescarPedidos = () => {},
   cambiarEstadoPedido,
   usuarioId,
   onCalificacionGuardada = () => {}
@@ -101,7 +103,17 @@ const MisPedidos = ({
         </div>
 
         <div className="flex-1 overflow-y-auto pb-24 px-5 pt-4 hide-scrollbar">
-          <h2 className="font-black text-xl mb-4 text-gray-900 tracking-wide uppercase">Mis Pedidos</h2>
+          <div className="flex justify-between items-center gap-2 mb-4">
+            <h2 className="font-black text-xl text-gray-900 tracking-wide uppercase">Mis Pedidos</h2>
+            <button
+              type="button"
+              onClick={refrescarPedidos}
+              disabled={cargandoPedidos || actualizandoPedidos}
+              className="rounded-xl bg-blue-50 text-[#0A3895] px-3 py-2 text-xs font-bold disabled:opacity-50"
+            >
+              {cargandoPedidos || actualizandoPedidos ? 'Actualizando...' : 'Actualizar'}
+            </button>
+          </div>
 
           {cargandoPedidos && <p className="text-center text-gray-500 text-sm mb-3">Consultando pedidos...</p>}
           {errorPedidos && <p role="alert" className="text-red-600 text-sm mb-3">{errorPedidos}</p>}
@@ -312,7 +324,7 @@ const MisPedidos = ({
           })}
         </div>
 
-        <NavegacionComprador activo="pedidos" irAInicio={irAInicio} irAPerfil={irAPerfil} />
+        <NavegacionComprador activo="pedidos" irAInicio={irAInicio} irAPedidos={refrescarPedidos} irAPerfil={irAPerfil} />
 
         {/* MODAL DE CALIFICACIONES FLOTANTE */}
         {modalCalificacion && (
