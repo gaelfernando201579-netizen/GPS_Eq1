@@ -3,7 +3,7 @@ import logoCampy from './assets/logo.png';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-export default function PanelModerador({ token, usuario, productos = [], cargandoProductos = false, errorProductos = '', cerrarSesion }) {
+export default function PanelModerador({ token, usuario, productos = [], cargandoProductos = false, errorProductos = '', eliminarPublicacion, alCambiarCatalogo = () => {}, cerrarSesion }) {
   const [pestana, setPestana] = useState('vendedor');
   const [solicitudes, setSolicitudes] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -16,6 +16,10 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
   const [errorVendedores, setErrorVendedores] = useState('');
   const [vendedorPorQuitar, setVendedorPorQuitar] = useState(null);
   const [quitandoVendedor, setQuitandoVendedor] = useState(false);
+  const [productoPorInhabilitar, setProductoPorInhabilitar] = useState(null);
+  const [inhabilitandoProducto, setInhabilitandoProducto] = useState(false);
+  const [filtroProducto, setFiltroProducto] = useState('');
+  const [tipoBusqueda, setTipoBusqueda] = useState('producto');
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -68,6 +72,7 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
       setVendedores((actuales) => actuales.filter((v) => v.id_usuario !== vendedorPorQuitar.id_usuario));
       setVendedorPorQuitar(null);
       setAviso(datos.mensaje || 'Se retiró el rol Vendedor.');
+      alCambiarCatalogo();
     } catch (e) {
       setErrorVendedores(e.message);
     } finally {
@@ -94,6 +99,30 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
       setError(e.message);
     } finally {
       setProcesando(null);
+    }
+  };
+
+  const productosFiltrados = productos.filter(producto => {
+    const texto = filtroProducto.trim().toLocaleLowerCase('es-MX');
+    if (!texto) return true;
+    const campo = tipoBusqueda === 'vendedor'
+      ? (producto.nombre_vendedor || producto.tienda || '')
+      : (producto.nombre || '');
+    return String(campo).toLocaleLowerCase('es-MX').includes(texto);
+  });
+
+  const confirmarInhabilitacion = async () => {
+    if (!productoPorInhabilitar || inhabilitandoProducto) return;
+    setInhabilitandoProducto(true);
+    setError('');
+    try {
+      await eliminarPublicacion(productoPorInhabilitar.id_producto ?? productoPorInhabilitar.id);
+      setAviso(`La publicación "${productoPorInhabilitar.nombre}" fue inhabilitada.`);
+      setProductoPorInhabilitar(null);
+    } catch (error) {
+      setError(error.message || 'No se pudo inhabilitar la publicación.');
+    } finally {
+      setInhabilitandoProducto(false);
     }
   };
 
@@ -128,18 +157,41 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
               <div className="bg-blue-50 border border-blue-100 rounded-2xl p-3 mb-5 text-sm text-[#0A3895]">
                 Vista previa del catálogo. Puedes consultar los productos, pero no agregarlos al carrito ni hacer pedidos desde el modo moderador.
               </div>
+              <div className="mb-4 flex flex-col gap-2">
+                <label className="text-xs font-bold text-[#0A3895]" htmlFor="filtro-catalogo-moderador">Buscar publicaciones</label>
+                <div className="flex gap-2">
+                  <select
+                    value={tipoBusqueda}
+                    onChange={e => setTipoBusqueda(e.target.value)}
+                    className="w-36 min-w-0 bg-white text-gray-900 border border-gray-200 rounded-xl px-2 py-3 text-xs"
+                  >
+                    <option value="producto">Producto</option>
+                    <option value="vendedor">Vendedor</option>
+                  </select>
+                  <input
+                    id="filtro-catalogo-moderador"
+                    type="search"
+                    value={filtroProducto}
+                    onChange={e => setFiltroProducto(e.target.value)}
+                    placeholder={tipoBusqueda === 'producto' ? 'Nombre del producto' : 'Nombre del vendedor'}
+                    className="min-w-0 flex-1 bg-white text-gray-900 border border-gray-200 rounded-xl px-3 py-3 text-xs"
+                  />
+                </div>
+              </div>
+              {error && <p role="alert" className="mb-3 text-xs text-red-700">{error}</p>}
+              {aviso && <p role="status" className="mb-3 text-xs text-green-800">{aviso}</p>}
               {cargandoProductos ? (
                 <p className="text-gray-600 text-center py-10">Cargando productos...</p>
               ) : errorProductos ? (
                 <p role="alert" className="text-red-700 bg-red-50 border border-red-200 p-3 rounded-xl text-sm">{errorProductos}</p>
-              ) : productos.length === 0 ? (
+              ) : productosFiltrados.length === 0 ? (
                 <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center text-gray-500">
                   No hay productos para mostrar.
                 </div>
               ) : (
                 <>
-                  <h3 className="font-black text-[#0A3895] text-sm mb-4">Productos disponibles ({productos.length})</h3>
-                  {productos.map((producto) => (
+                  <h3 className="font-black text-[#0A3895] text-sm mb-4">Productos disponibles ({productosFiltrados.length})</h3>
+                  {productosFiltrados.map((producto) => (
                     <div key={producto.id_producto ?? producto.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 mb-4 flex items-center gap-3">
                       <div className="w-20 h-20 bg-gray-100 rounded-2xl shrink-0 flex items-center justify-center overflow-hidden">
                         {producto.imagen_url ? (
@@ -152,7 +204,14 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
                         <p className="text-[10px] font-bold uppercase text-[#FF8C00]">{producto.categoria || 'Sin categoría'}</p>
                         <h4 className="font-black text-gray-900 text-sm leading-snug mt-1">{producto.nombre}</h4>
                         <p className="text-xs text-gray-500 mt-1">{producto.tienda || (producto.nombre_vendedor ? `Vende: ${producto.nombre_vendedor}` : 'Vendedor no disponible')}</p>
-                        <p className="font-black text-[#FF8C00] mt-2">${Number(producto.precio || 0).toFixed(2)}</p>
+                        <div className="flex items-center justify-between gap-2 mt-2">
+                          <p className="font-black text-[#FF8C00]">${Number(producto.precio || 0).toFixed(2)}</p>
+                          <button
+                            type="button"
+                            onClick={() => { setError(''); setProductoPorInhabilitar(producto); }}
+                            className="px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold"
+                          >Eliminar</button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -257,6 +316,28 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
           )}
         </div>
 
+        {productoPorInhabilitar && (
+          <div className="absolute inset-0 z-50 bg-black/60 flex items-center justify-center p-5">
+            <div role="alertdialog" aria-modal="true" aria-labelledby="titulo-inhabilitar-producto"
+              className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl text-gray-900">
+              <h3 id="titulo-inhabilitar-producto" className="text-xl font-black">¿Estás seguro?</h3>
+              <p className="text-sm text-gray-700 mt-3">
+                ¿Quieres retirar permanentemente la publicación <strong>{productoPorInhabilitar.nombre}</strong>?
+              </p>
+              <p className="text-xs text-gray-500 mt-2">El registro permanecerá en la base de datos, pero dejará de mostrarse.</p>
+              {error && <p role="alert" className="text-red-700 text-xs mt-3">{error}</p>}
+              <div className="grid grid-cols-2 gap-3 mt-6">
+                <button type="button" disabled={inhabilitandoProducto} onClick={() => setProductoPorInhabilitar(null)}
+                  className="py-3 rounded-xl bg-gray-100 text-gray-800 font-black">Cancelar</button>
+                <button type="button" disabled={inhabilitandoProducto} onClick={confirmarInhabilitacion}
+                  className="py-3 rounded-xl bg-red-600 text-white font-black disabled:opacity-50">
+                  {inhabilitandoProducto ? 'Retirando...' : 'Sí, eliminar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {vendedorPorQuitar && (
           <div className="absolute inset-0 z-50 bg-black/60 flex items-center justify-center p-5">
             <div role="alertdialog" aria-modal="true" aria-labelledby="titulo-quitar-vendedor"
@@ -267,8 +348,7 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
                 ¿Seguro que quieres retirar el rol de Vendedor a <strong>{vendedorPorQuitar.nombre}</strong>?
               </p>
               <p className="text-xs text-gray-600 mt-3">
-                Su cuenta, sus {vendedorPorQuitar.total_productos} productos y sus pedidos no se eliminarán.
-                Los productos podrían seguir visibles en el catálogo.
+                Su cuenta y sus registros seguirán en la base de datos, pero sus productos y pedidos antiguos dejarán de mostrarse definitivamente en Campy.
               </p>
               {errorVendedores && <p role="alert" className="text-red-700 text-xs mt-3">{errorVendedores}</p>}
               <div className="grid grid-cols-2 gap-3 mt-6">

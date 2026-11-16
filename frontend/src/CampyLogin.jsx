@@ -74,7 +74,7 @@ const CampyLogin = ({ alIngresar }) => {
         setError(errData.mensaje || 'Credenciales inválidas o error en la cuenta.');
       }
     } catch {
-      setError('No se pudo conectar con el servidor. Verifica que el backend esté encendido.');
+      setError('Espera unos momentos y vuelve a intentar.');
     } finally {
       setCargando(false);
     }
@@ -272,7 +272,7 @@ const CampyLogin = ({ alIngresar }) => {
                   Recordarme
                 </label>
                 <a href="#recuperar" onClick={(e) => e.preventDefault()} className="hover:text-orange-300 transition-colors">
-                  ¿Olvidaste tu NIP?
+                  ¿Olvidaste tu contraseña?
                 </a>
               </div>
             )}

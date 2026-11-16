@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
+import NavegacionComprador from './NavegacionComprador.jsx';
 
 import FormularioTarjetaDemo from './FormularioTarjetaDemo.jsx';
 import {
@@ -222,7 +223,7 @@ React.useEffect(() => {
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center font-sans">
-      <div className="w-full max-w-[400px] h-screen sm:h-[800px] bg-gray-50 relative flex flex-col shadow-2xl sm:rounded-2xl overflow-hidden">
+      <div className="w-full max-w-[400px] h-screen sm:h-[800px] bg-gray-50 text-gray-900 relative flex flex-col shadow-2xl sm:rounded-2xl overflow-hidden">
         
         {/* ENCABEZADO AZUL CON ONDAS */}
         <div className="bg-[#0A3895] pt-6 pb-16 px-6 relative z-0 shrink-0">
@@ -406,21 +407,7 @@ React.useEffect(() => {
           </button>
         </div>
 
-        {/* Barra inferior de Cliente */}
-        <div className="absolute bottom-0 w-full bg-white rounded-t-[30px] shadow-[0_-10px_20px_rgba(0,0,0,0.05)] px-8 py-2 flex justify-between items-end pb-6 z-20">
-          <div className="flex flex-col items-center opacity-40 cursor-pointer pb-1" onClick={irAInicio}>
-            <span className="text-2xl mb-1">🏠</span>
-          </div>
-          <div className="flex flex-col items-center opacity-40 cursor-pointer pb-1" onClick={irAPedidos}>
-            <span className="text-2xl mb-1">🛍️</span>
-          </div>
-          <div className="flex flex-col items-center">
-            <div className="bg-[#0A3895] w-12 h-12 rounded-full flex items-center justify-center shadow-lg -mt-5 border-4 border-white text-white text-xl">
-              👤
-            </div>
-            <span className="text-[#0A3895] text-[10px] font-bold mt-1">Perfil</span>
-          </div>
-        </div>
+        <NavegacionComprador activo="perfil" irAInicio={irAInicio} irAPedidos={irAPedidos} />
 
         {modalActivo && (
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-40" onClick={() => setModalActivo(null)}></div>

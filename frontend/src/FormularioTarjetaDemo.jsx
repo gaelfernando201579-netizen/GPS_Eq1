@@ -152,7 +152,7 @@ export default function FormularioTarjetaDemo({
           disabled={guardando}
           className="flex-1 rounded-xl bg-[#FF8C00] px-3 py-3 font-bold text-white text-sm disabled:opacity-60"
         >
-          {guardando ? 'Guardando en Supabase...' : 'Guardar tarjeta'}
+          {guardando ? 'Guardando tarjeta...' : 'Guardar tarjeta'}
         </button>
       </div>
     </form>

@@ -132,6 +132,13 @@ export async function crearPedido(req, res) {
               precio, cantidad_disponible, estado
        FROM public.productos
        WHERE id_producto = ANY($1::integer[])
+         AND inhabilitado_permanente = FALSE
+         AND EXISTS (
+           SELECT 1 FROM public.usuario_roles ur
+           JOIN public.roles r ON r.id_rol = ur.id_rol
+           WHERE ur.id_usuario = public.productos.id_vendedor
+             AND LOWER(TRIM(r.nombre)) = 'vendedor'
+         )
        ORDER BY id_producto FOR UPDATE`,
       [[...cantidades.keys()]]
     );
@@ -264,8 +271,8 @@ export async function crearPedido(req, res) {
     return res.status(201).json({
       mensaje:
         idsPedidos.length === 1
-          ? 'Pedido registrado en Supabase.'
-          : 'Pedidos registrados en Supabase.',
+          ? 'Pedido realizado correctamente.'
+          : 'Pedidos realizados correctamente.',
       idsPedidos,
       totalPedidos: idsPedidos.length
     });
@@ -282,7 +289,7 @@ export async function crearPedido(req, res) {
     return res.status(error.status || 500).json({
       mensaje: error.status
         ? error.message
-        : 'No se pudo guardar el pedido en Supabase.'
+        : 'No se pudo realizar el pedido.'
     });
 
   } finally {
@@ -325,6 +332,7 @@ async function consultarPedidos(req, res, campo) {
        LEFT JOIN public.pedido_metodos_pago mp
          ON mp.pedido_id = p.id_pedido
        WHERE p.${campo} = $1
+         AND p.oculto_por_retiro_vendedor = FALSE
        ORDER BY p.fecha_pedido DESC,
                 p.id_pedido DESC,
                 d.id_producto`,
@@ -425,6 +433,7 @@ export async function cancelarPedido(req, res) {
        WHERE id_pedido = $1
          AND id_comprador = $2
          AND estado = 'Pendiente'
+         AND oculto_por_retiro_vendedor = FALSE
          AND fecha_pedido >= CURRENT_TIMESTAMP - INTERVAL '10 minutes'
        RETURNING id_pedido`,
       [idPedido, req.usuario.id]
@@ -519,6 +528,7 @@ export async function actualizarEstadoPedidoVendedor(req, res) {
        WHERE id_pedido = $2
          AND id_vendedor = $3
          AND estado = ANY($4::text[])
+         AND oculto_por_retiro_vendedor = FALSE
        RETURNING id_pedido, estado`,
       [
         estadoNuevo,
@@ -536,7 +546,7 @@ export async function actualizarEstadoPedidoVendedor(req, res) {
     }
 
     return res.json({
-      mensaje: 'Estado del pedido guardado en Supabase.',
+      mensaje: 'Estado del pedido actualizado.',
       pedido: resultado.rows[0]
     });
 
@@ -545,7 +555,7 @@ export async function actualizarEstadoPedidoVendedor(req, res) {
 
     return res.status(500).json({
       mensaje:
-        'No se pudo actualizar el pedido en Supabase.'
+        'No se pudo actualizar el pedido.'
     });
   }
 }
@@ -575,6 +585,7 @@ export async function confirmarRecepcionComprador(req, res) {
        WHERE id_pedido = $1
          AND id_comprador = $2
          AND estado = 'En el punto de entrega'
+         AND oculto_por_retiro_vendedor = FALSE
        RETURNING id_pedido, estado`,
       [idPedido, Number(req.usuario.id)]
     );
@@ -587,7 +598,7 @@ export async function confirmarRecepcionComprador(req, res) {
     }
 
     return res.json({
-      mensaje: 'Recepción confirmada y guardada en Supabase.',
+      mensaje: 'Recepción confirmada.',
       pedido: resultado.rows[0]
     });
 
@@ -595,7 +606,7 @@ export async function confirmarRecepcionComprador(req, res) {
     console.error('Error confirmando recepción:', error);
 
     return res.status(500).json({
-      mensaje: 'No se pudo guardar la recepción en Supabase.'
+      mensaje: 'No se pudo confirmar la recepción.'
     });
   }
 }
@@ -625,6 +636,7 @@ export async function calificarPedido(req, res) {
        SELECT p.id_pedido, p.id_comprador, $3::smallint, $4::text
        FROM public.pedidos p
        WHERE p.id_pedido = $1 AND p.id_comprador = $2 AND p.estado = 'Entregado'
+         AND p.oculto_por_retiro_vendedor = FALSE
        ON CONFLICT (id_pedido) DO NOTHING
        RETURNING id_pedido, estrellas, comentario, fecha_calificacion`,
       [idPedido, idComprador, estrellas, comentario.trim()]
@@ -633,11 +645,11 @@ export async function calificarPedido(req, res) {
       return res.status(409).json({ mensaje: 'Solo puedes calificar una vez un pedido propio que ya fue entregado.' });
     }
     return res.status(201).json({
-      mensaje: 'Calificación guardada en Supabase.',
+      mensaje: 'Calificación guardada correctamente.',
       calificacion: resultado.rows[0]
     });
   } catch (error) {
     console.error('Error guardando calificación:', error);
-    return res.status(500).json({ mensaje: 'No se pudo guardar la calificación en Supabase.' });
+    return res.status(500).json({ mensaje: 'No se pudo guardar la calificación.' });
   }
 }

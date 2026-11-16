@@ -21,6 +21,8 @@ const PanelVendedor = ({
   cerrarSesion
 }) => {
   const [tabActiva, setTabActiva] = useState('productos');
+  const [avisosModeracion, setAvisosModeracion] = useState([]);
+  const [errorProducto, setErrorProducto] = useState('');
   const [modalActivo, setModalActivo] = useState(null);
 
   // Estados para crear / editar producto
@@ -224,7 +226,7 @@ const PanelVendedor = ({
       setPedidoSeleccionado(null);
       setModalActivo(null);
     } catch (error) {
-      setErrorAccionPedido(error.message || 'No se pudo confirmar el pedido en Supabase.');
+      setErrorAccionPedido(error.message || 'No se pudo confirmar el pedido.');
     }
   };
 
@@ -249,7 +251,7 @@ const PanelVendedor = ({
       setNotaCancelacion('');
       setModalActivo(null);
     } catch (error) {
-      setErrorCancelacion(error.message || 'No se pudo cancelar el pedido en Supabase.');
+      setErrorCancelacion(error.message || 'No se pudo cancelar el pedido.');
     }
   };
 
@@ -261,6 +263,35 @@ const PanelVendedor = ({
       setErrorAccionPedido(error.message || 'No se pudo guardar el nuevo estado.');
     }
   };
+
+  const confirmarEliminacionProducto = async (producto) => {
+    if (!window.confirm(`¿Eliminar permanentemente la publicación "${producto.nombre}"?`)) return;
+    setErrorProducto('');
+    try {
+      await eliminarProducto(producto.id);
+    } catch (error) {
+      setErrorProducto(error.message || 'No se pudo eliminar el producto.');
+    }
+  };
+
+  React.useEffect(() => {
+    if (tabActiva !== 'cuenta') return;
+    let activo = true;
+    const token = localStorage.getItem('campy_token');
+    if (!token) return;
+    const url = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    fetch(`${url}/api/productos/mis-avisos`, {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then(async respuesta => {
+      if (!respuesta.ok) throw new Error('No se pudieron cargar los avisos.');
+      return respuesta.json();
+    }).then(datos => {
+      if (activo) setAvisosModeracion(Array.isArray(datos) ? datos : []);
+    }).catch(error => {
+      if (activo) setErrorProducto(error.message);
+    });
+    return () => { activo = false; };
+  }, [tabActiva]);
 
   const pedidosPendientesCount = pedidosVendedor.filter(
     (p) => p.estado !== 'Entregado' && p.estado !== 'Cancelado'
@@ -300,6 +331,7 @@ const PanelVendedor = ({
           {/* ================= APARTADO 1: MIS PRODUCTOS ================= */}
           {tabActiva === 'productos' && (
             <>
+              {errorProducto && <p role="alert" className="text-xs text-red-700 bg-red-50 rounded-xl p-3 mb-3">{errorProducto}</p>}
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-black text-sm text-gray-900 uppercase tracking-wide">
                   Mis Productos ({misProductos.length})
@@ -365,7 +397,7 @@ const PanelVendedor = ({
                           <span>✏️</span> Editar nombre / foto / precio
                         </button>
                         <button
-                          onClick={() => eliminarProducto(prod.id)}
+                          onClick={() => confirmarEliminacionProducto(prod)}
                           className="bg-red-50 hover:bg-red-100 text-red-500 font-bold text-xs px-3.5 py-2 rounded-xl transition-colors"
                           title="Eliminar producto"
                         >
@@ -417,6 +449,16 @@ const PanelVendedor = ({
                 >
                   🛒 Modo comprador
                 </button>
+                {avisosModeracion.length > 0 && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                    <h3 className="font-black text-sm">Avisos de publicaciones retiradas</h3>
+                    {avisosModeracion.map(aviso => (
+                      <p key={aviso.id_producto} className="mt-2 text-xs leading-relaxed">
+                        El producto <strong>{aviso.nombre}</strong> fue inhabilitado{aviso.origen_inhabilitacion === 'Moderación' ? ' por moderación' : ' tras el retiro del rol de vendedor'}. Ya no aparece en el catálogo.
+                      </p>
+                    ))}
+                  </div>
+                )}
                 <button
                   onClick={cerrarSesion}
                   className="w-full bg-[#FFF0F0] text-[#FF4D4D] font-bold text-xs py-3.5 rounded-2xl hover:bg-[#FFE5E5] transition-colors border border-[#FFE5E5]"
@@ -439,7 +481,7 @@ const PanelVendedor = ({
                 </p>
               </div>
 
-              {cargandoPedidos && <p className="text-xs text-gray-500 mb-3">Consultando pedidos en Supabase...</p>}
+              {cargandoPedidos && <p className="text-xs text-gray-500 mb-3">Consultando pedidos...</p>}
               {errorPedidos && <p role="alert" className="text-red-600 text-xs mb-3">{errorPedidos}</p>}
               {errorAccionPedido && <p role="alert" className="text-red-600 text-xs mb-3">{errorAccionPedido}</p>}
               {pedidosVendedor.length === 0 ? (

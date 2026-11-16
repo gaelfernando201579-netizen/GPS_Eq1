@@ -1,6 +1,7 @@
 import { pool } from '../config/db.js';
 
 const metodos = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta' };
+const estadosPagoPermitidos = new Set(['Pendiente', 'Aceptado', 'En preparación', 'En camino']);
 
 const idValido = valor => Number.isSafeInteger(Number(valor)) && Number(valor) > 0;
 
@@ -55,29 +56,56 @@ export async function guardarMetodoPedido(req, res) {
     return res.status(400).json({ mensaje: 'Selecciona un método y una tarjeta de prueba válidos.' });
   }
 
-  try {
-    const pedido = await buscarPedido(req, res);
-    if (!pedido) return;
+  const comprador = Number(req.usuario?.id);
+  const pedidoId = Number(req.params.id);
 
-    if (pedido.estado === 'Cancelado' || pedido.estado === 'Entregado') {
-      return res.status(409).json({ mensaje: 'No puedes cambiar el método de un pedido terminado.' });
+  if (!idValido(comprador) || !idValido(pedidoId)) {
+    return res.status(400).json({ mensaje: 'Pedido o sesión inválidos.' });
+  }
+
+  let cliente;
+
+  try {
+    cliente = await pool.connect();
+    await cliente.query('BEGIN');
+
+    const pedidos = await cliente.query(
+      `SELECT id_pedido, estado FROM public.pedidos
+       WHERE id_pedido = $1 AND id_comprador = $2
+       FOR UPDATE`,
+      [pedidoId, comprador]
+    );
+
+    if (!pedidos.rowCount) {
+      await cliente.query('ROLLBACK');
+      return res.status(404).json({ mensaje: 'El pedido no existe en tu cuenta.' });
+    }
+
+    if (!estadosPagoPermitidos.has(pedidos.rows[0].estado)) {
+      await cliente.query('ROLLBACK');
+      return res.status(409).json({
+        mensaje: 'Ya no puedes cambiar el método de pago de este pedido.'
+      });
     }
 
     let tarjetaParaGuardar = null;
 
     if (metodo === 'Tarjeta') {
-      const tarjeta = await pool.query(
+      const tarjetas = await cliente.query(
         `SELECT id_tarjeta FROM public.tarjetas_guardadas
          WHERE id_tarjeta = $1 AND id_usuario = $2`,
-        [idTarjeta, req.usuario.id]
+        [idTarjeta, comprador]
       );
-      if (!tarjeta.rowCount) {
+
+      if (!tarjetas.rowCount) {
+        await cliente.query('ROLLBACK');
         return res.status(403).json({ mensaje: 'Esa tarjeta no pertenece a tu cuenta.' });
       }
+
       tarjetaParaGuardar = idTarjeta;
     }
 
-    const resultado = await pool.query(
+    const resultado = await cliente.query(
       `INSERT INTO public.pedido_metodos_pago
          (pedido_id, id_comprador, metodo, id_tarjeta)
        VALUES ($1, $2, $3, $4)
@@ -87,20 +115,26 @@ export async function guardarMetodoPedido(req, res) {
            fecha_actualizacion = now()
        WHERE public.pedido_metodos_pago.id_comprador = EXCLUDED.id_comprador
        RETURNING metodo, id_tarjeta::text AS "idTarjeta"`,
-      [req.params.id, req.usuario.id, metodo, tarjetaParaGuardar]
+      [pedidoId, comprador, metodo, tarjetaParaGuardar]
     );
 
     if (!resultado.rowCount) {
+      await cliente.query('ROLLBACK');
       return res.status(403).json({ mensaje: 'No puedes modificar ese pedido.' });
     }
 
+    await cliente.query('COMMIT');
+
     return res.json({
-      mensaje: `Método ${metodo.toLowerCase()} guardado en Supabase. El pedido sigue pendiente de pago.`,
+      mensaje: `Método ${metodo.toLowerCase()} guardado. El pedido sigue pendiente de pago.`,
       ...resultado.rows[0],
       estadoPago: 'Pendiente'
     });
   } catch (error) {
+    if (cliente) await cliente.query('ROLLBACK').catch(() => {});
     console.error('Guardando método de pago:', error);
     return res.status(500).json({ mensaje: 'No se pudo guardar el método de pago.' });
+  } finally {
+    if (cliente) cliente.release();
   }
 }

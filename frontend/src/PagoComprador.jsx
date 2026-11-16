@@ -388,7 +388,7 @@ export default function PagoComprador({
                     setTarjetas(lista);
                     setTarjetaSeleccionada(t.id);
                     setAgregando(false);
-                    setMensaje('Tarjeta de prueba guardada en Supabase.');
+                    setMensaje('Tarjeta de prueba guardada correctamente.');
                   }}
                 />
               ) : (
@@ -416,7 +416,7 @@ export default function PagoComprador({
               onClick={guardarMetodoPago}
               className="mt-3 w-full rounded-xl bg-[#FF8C00] text-white font-bold py-3 disabled:opacity-50"
             >
-              {guardandoMetodo ? 'Guardando en Supabase...' : 'Guardar método de pago'}
+              {guardandoMetodo ? 'Guardando método de pago...' : 'Guardar método de pago'}
             </button>
           )}
 

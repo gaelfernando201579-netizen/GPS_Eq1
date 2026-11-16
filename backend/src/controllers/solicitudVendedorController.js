@@ -207,7 +207,7 @@ export async function listarVendedoresActivos(req, res) {
        FROM public.usuarios u
        JOIN public.usuario_roles ur ON ur.id_usuario = u.id_usuario
        JOIN public.roles r ON r.id_rol = ur.id_rol
-       LEFT JOIN public.productos p ON p.id_vendedor = u.id_usuario
+       LEFT JOIN public.productos p ON p.id_vendedor = u.id_usuario AND p.inhabilitado_permanente = FALSE
        WHERE LOWER(TRIM(r.nombre)) = 'vendedor'
          AND LOWER(TRIM(u.estado)) = 'activo'
        GROUP BY u.id_usuario, u.nombre, u.correo
@@ -255,6 +255,26 @@ export async function quitarRolVendedor(req, res) {
       return res.status(409).json({ mensaje: 'Esta cuenta ya no tiene el rol Vendedor. Actualiza la lista.' });
     }
 
+    const publicaciones = await client.query(
+      `UPDATE public.productos
+       SET inhabilitado_permanente = TRUE,
+           fecha_inhabilitacion = NOW(),
+           origen_inhabilitacion = 'Retiro de vendedor',
+           motivo_inhabilitacion = 'La autorización para vender fue retirada por moderación.',
+           id_usuario_inhabilitacion = $2
+       WHERE id_vendedor = $1 AND inhabilitado_permanente = FALSE
+       RETURNING id_producto`,
+      [vendedorId, moderadorId]
+    );
+
+    const pedidos = await client.query(
+      `UPDATE public.pedidos
+       SET oculto_por_retiro_vendedor = TRUE
+       WHERE id_vendedor = $1 AND oculto_por_retiro_vendedor = FALSE
+       RETURNING id_pedido`,
+      [vendedorId]
+    );
+
     // Si fue aprobado mediante solicitud, indicar que el permiso se retiró.
     await client.query(
       `UPDATE public.solicitudes_vendedor
@@ -267,7 +287,9 @@ export async function quitarRolVendedor(req, res) {
 
     await client.query('COMMIT');
     return res.json({
-      mensaje: `Se retiró el rol Vendedor a ${usuario.rows[0].nombre}. La cuenta, los productos y los pedidos se conservan.`,
+      mensaje: `Se retiró el rol Vendedor a ${usuario.rows[0].nombre}. Sus publicaciones y pedidos anteriores quedaron ocultos, pero permanecen en la base de datos.`,
+      publicaciones_ocultas: publicaciones.rowCount,
+      pedidos_ocultos: pedidos.rowCount,
       id_usuario: vendedorId
     });
   } catch (error) {

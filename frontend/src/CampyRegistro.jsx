@@ -48,7 +48,7 @@ const CampyRegistro = ({ alRegistrar, volverAlLogin }) => {
 
       alRegistrar();
     } catch {
-      setError('No se pudo conectar con el servidor.');
+      setError('Espera unos momentos y vuelve a intentar.');
     } finally {
       setCargando(false);
     }

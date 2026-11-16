@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
+import NavegacionComprador from './NavegacionComprador.jsx';
 import PagoComprador from './PagoComprador.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -102,7 +103,7 @@ const MisPedidos = ({
         <div className="flex-1 overflow-y-auto pb-24 px-5 pt-4 hide-scrollbar">
           <h2 className="font-black text-xl mb-4 text-gray-900 tracking-wide uppercase">Mis Pedidos</h2>
 
-          {cargandoPedidos && <p className="text-center text-gray-500 text-sm mb-3">Consultando pedidos en Supabase...</p>}
+          {cargandoPedidos && <p className="text-center text-gray-500 text-sm mb-3">Consultando pedidos...</p>}
           {errorPedidos && <p role="alert" className="text-red-600 text-sm mb-3">{errorPedidos}</p>}
           {errorConfirmacion && <p role="alert" className="text-red-600 text-sm mb-3">{errorConfirmacion}</p>}
           {!cargandoPedidos && !errorPedidos && pedidosVendedor.length === 0 && (
@@ -118,6 +119,7 @@ const MisPedidos = ({
             const estaCancelado = entrega.estado === 'Cancelado';
             const estaEnElPunto = entrega.estado === 'En el punto de entrega';
             const estaEntregado = entrega.estado === 'Entregado';
+            const puedeElegirPago = ['Pendiente', 'Aceptado', 'En preparación', 'En camino'].includes(entrega.estado);
 
             return (
               <div
@@ -153,13 +155,13 @@ const MisPedidos = ({
                   <span className="text-gray-400 text-[10px] font-bold">Pedido #{entrega.id}</span>
                 </div>
 
-                {/* Métodos de pago: transferencia y tarjetas */}
-                <PagoComprador
-                  usuarioId={usuarioId}
-                  pedidoId={entrega.id}
-                  total={entrega.total}
-                  cancelado={estaCancelado}
-                />
+                {puedeElegirPago && (
+                  <PagoComprador
+                    usuarioId={usuarioId}
+                    pedidoId={entrega.id}
+                    total={entrega.total}
+                  />
+                )}
 
                 {/* Alerta destacada cuando ya llegaron al punto de encuentro */}
                 {estaEnElPunto && (
@@ -310,14 +312,7 @@ const MisPedidos = ({
           })}
         </div>
 
-        <div className="absolute bottom-0 w-full bg-white rounded-t-[30px] shadow-[0_-10px_20px_rgba(0,0,0,0.05)] px-8 py-2 flex justify-between items-end pb-6 z-20">
-          <div className="flex flex-col items-center opacity-40 cursor-pointer pb-1" onClick={irAInicio}><span className="text-2xl mb-1">🏠</span></div>
-          <div className="flex flex-col items-center">
-            <div className="bg-[#0A3895] w-12 h-12 rounded-full flex items-center justify-center shadow-lg -mt-5 border-4 border-white text-white text-xl">🛍️</div>
-            <span className="text-[#0A3895] text-[10px] font-bold mt-1">Pedidos</span>
-          </div>
-          <div className="flex flex-col items-center opacity-40 cursor-pointer pb-1 hover:opacity-80" onClick={irAPerfil}><span className="text-2xl mb-1">👤</span></div>
-        </div>
+        <NavegacionComprador activo="pedidos" irAInicio={irAInicio} irAPerfil={irAPerfil} />
 
         {/* MODAL DE CALIFICACIONES FLOTANTE */}
         {modalCalificacion && (

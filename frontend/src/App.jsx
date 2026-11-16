@@ -90,7 +90,7 @@ function App() {
       } catch (error) {
         if (vigente) {
           setProductosCatalogo([]);
-          setErrorProductos('No se pudieron cargar los productos de Supabase.');
+          setErrorProductos('No se pudieron cargar los productos. Intenta nuevamente.');
         }
       } finally {
         if (vigente) setCargandoProductos(false);
@@ -183,7 +183,7 @@ function App() {
       })
     });
     const resultado = await respuesta.json().catch(() => ({}));
-    if (!respuesta.ok) throw new Error(resultado.mensaje || 'No se pudo guardar el pedido en Supabase.');
+    if (!respuesta.ok) throw new Error(resultado.mensaje || 'No se pudo realizar el pedido.');
 
     setCarritoGlobal({});
     setPantallaActual('pedidos');
@@ -246,12 +246,12 @@ function App() {
         .select('id_categoria, nombre');
 
       if (errorCat) {
-        alert('Error al leer categorías de Supabase (revisa permisos RLS): ' + errorCat.message);
+        alert('No se pudieron consultar las categorías: ' + errorCat.message);
         return;
       }
 
       if (!categoriasDB || categoriasDB.length === 0) {
-        alert('Tu tabla "categorias" en Supabase está vacía (0 filas). Ejecuta el script SQL en Supabase para llenarla.');
+        alert('No hay categorías disponibles. Intenta más tarde.');
         return;
       }
 
@@ -302,7 +302,7 @@ function App() {
 
       if (error) {
         console.error('Error insertando en la BD:', error);
-        alert('Error al guardar en la base de datos: ' + error.message);
+        alert('No se pudo publicar el producto: ' + error.message);
         return;
       }
 
@@ -319,7 +319,7 @@ function App() {
       };
 
       setProductosCatalogo((prev) => [nuevoProductoCompleto, ...prev]);
-      alert('¡Producto y foto guardados exitosamente en la base de datos!');
+      alert('Producto publicado correctamente.');
     } catch (err) {
       console.error('Error inesperado:', err);
       alert('Ocurrió un error inesperado al registrar el producto.');
@@ -333,12 +333,22 @@ function App() {
   };
 
   const eliminarProducto = async (idProducto) => {
-    setProductosCatalogo((prev) => prev.filter((prod) => prod.id !== idProducto));
-    setCarritoGlobal((prev) => {
+    const token = localStorage.getItem('campy_token') || tokenAuth;
+    if (!token) throw new Error('Tu sesión ha expirado. Inicia sesión nuevamente.');
+    const respuesta = await fetch(`${API_URL}/api/productos/${idProducto}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const datos = await respuesta.json().catch(() => ({}));
+    if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo retirar el producto.');
+    setProductosCatalogo(prev => prev.filter(prod => String(prod.id) !== String(idProducto)));
+    setCarritoGlobal(prev => {
       const copia = { ...prev };
       delete copia[idProducto];
       return copia;
     });
+    setRecargaCatalogo(n => n + 1);
+    return datos;
   };
 
   const guardarEstadoEnSupabase = async (pedidoId, estado) => {
@@ -350,7 +360,7 @@ function App() {
       body: JSON.stringify({ estado })
     });
     const datos = await respuesta.json().catch(() => ({}));
-    if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo guardar el estado en Supabase.');
+    if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo actualizar el estado del pedido.');
     return datos.pedido;
   };
 
@@ -396,7 +406,7 @@ function App() {
       headers: { Authorization: `Bearer ${token}` }
     });
     const datos = await respuesta.json().catch(() => ({}));
-    if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo confirmar la recepción en Supabase.');
+    if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo confirmar la recepción del pedido.');
     setPedidosPorCumplir((prev) =>
       prev.map((p) => p.id === pedidoId ? { ...p, estado: datos.pedido.estado } : p)
     );
@@ -486,6 +496,8 @@ function App() {
           productos={productosCatalogo}
           cargandoProductos={cargandoProductos}
           errorProductos={errorProductos}
+          eliminarPublicacion={eliminarProducto}
+          alCambiarCatalogo={() => setRecargaCatalogo(n => n + 1)}
           irAPerfil={() => setPantallaActual('perfil')}
           irAPanelVendedor={() => setPantallaActual('vendedor')}
           irAInicio={() => setPantallaActual('home')}
