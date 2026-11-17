@@ -28,6 +28,20 @@ const CampyLogin = ({ alIngresar }) => {
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
+  // Estados para el modal de recuperación estilo Google
+  const [modalRecuperar, setModalRecuperar] = useState(false);
+  const [pasoRecuperar, setPasoRecuperar] = useState(1); // 1: Correo, 2: Código, 3: Nueva Pass, 4: Éxito
+  const [correoRecuperar, setCorreoRecuperar] = useState('');
+  const [codigoRecuperar, setCodigoRecuperar] = useState('');
+  const [nuevaPass, setNuevaPass] = useState('');
+  const [confirmarPass, setConfirmarPass] = useState('');
+  const [verNuevaPass, setVerNuevaPass] = useState(false);
+  const [errorRecuperar, setErrorRecuperar] = useState('');
+  const [mensajeRecuperar, setMensajeRecuperar] = useState('');
+  const [cargandoRecuperar, setCargandoRecuperar] = useState(false);
+
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
   const cambiarCarrera = (opcion) => {
     setCarreras((actuales) =>
       actuales.includes(opcion)
@@ -45,7 +59,6 @@ const CampyLogin = ({ alIngresar }) => {
     }
     setCargando(true);
 
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
     const endpoint = modoRegistro ? '/api/auth/registro' : '/api/auth/login';
     const payload = modoRegistro
       ? { nombre: nombre.trim(), correo: correo.trim(), telefono: telefono.trim(), password, carrera: carreras.join(', ') }
@@ -85,12 +98,11 @@ const CampyLogin = ({ alIngresar }) => {
     setCargando(true);
 
     try {
-      const providerId = proveedor.toLowerCase(); // 'google' o 'github'
+      const providerId = proveedor.toLowerCase();
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: providerId,
         options: {
-          // Redirige al usuario de vuelta a la app después de autenticar
           redirectTo: window.location.origin
         }
       });
@@ -98,11 +110,116 @@ const CampyLogin = ({ alIngresar }) => {
       if (error) {
         throw error;
       }
-      // El navegador redirigirá automáticamente a la pantalla de login de Google/GitHub
     } catch (err) {
       console.error('Error OAuth:', err);
       setError(err.message || `No se pudo iniciar sesión con ${proveedor}`);
       setCargando(false);
+    }
+  };
+
+  // Funciones del flujo de recuperación estilo Google
+  const abrirModalRecuperacion = (e) => {
+    e.preventDefault();
+    setCorreoRecuperar(correo.trim());
+    setCodigoRecuperar('');
+    setNuevaPass('');
+    setConfirmarPass('');
+    setErrorRecuperar('');
+    setMensajeRecuperar('');
+    setPasoRecuperar(1);
+    setModalRecuperar(true);
+  };
+
+  const enviarCodigoRecuperacion = async (e) => {
+    if (e) e.preventDefault();
+    setErrorRecuperar('');
+    setMensajeRecuperar('');
+    setCargandoRecuperar(true);
+
+    try {
+      const res = await fetch(`${baseUrl}/api/auth/recuperar-password/solicitar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ correo: correoRecuperar.trim() })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.mensaje || 'No se pudo enviar el código de verificación.');
+      }
+      setMensajeRecuperar(data.mensaje);
+      setPasoRecuperar(2);
+    } catch (err) {
+      setErrorRecuperar(err.message);
+    } finally {
+      setCargandoRecuperar(false);
+    }
+  };
+
+  const validarCodigoIngresado = async (e) => {
+    e.preventDefault();
+    setErrorRecuperar('');
+    setMensajeRecuperar('');
+    setCargandoRecuperar(true);
+
+    try {
+      const res = await fetch(`${baseUrl}/api/auth/recuperar-password/verificar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          correo: correoRecuperar.trim(),
+          codigo: codigoRecuperar.trim()
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.mensaje || 'Código inválido.');
+      }
+      setMensajeRecuperar(data.mensaje);
+      setPasoRecuperar(3);
+    } catch (err) {
+      setErrorRecuperar(err.message);
+    } finally {
+      setCargandoRecuperar(false);
+    }
+  };
+
+  const guardarNuevaPassword = async (e) => {
+    e.preventDefault();
+    setErrorRecuperar('');
+    setMensajeRecuperar('');
+
+    if (nuevaPass.length < 8) {
+      setErrorRecuperar('La contraseña debe tener al menos 8 caracteres.');
+      return;
+    }
+    if (nuevaPass !== confirmarPass) {
+      setErrorRecuperar('Las contraseñas no coinciden.');
+      return;
+    }
+
+    setCargandoRecuperar(true);
+    try {
+      const res = await fetch(`${baseUrl}/api/auth/recuperar-password/confirmar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          correo: correoRecuperar.trim(),
+          codigo: codigoRecuperar.trim(),
+          nuevaPassword: nuevaPass
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.mensaje || 'No se pudo actualizar la contraseña.');
+      }
+      setMensajeRecuperar(data.mensaje);
+      setCorreo(correoRecuperar.trim());
+      setPassword('');
+      setPasoRecuperar(4);
+    } catch (err) {
+      setErrorRecuperar(err.message);
+    } finally {
+      setCargandoRecuperar(false);
     }
   };
 
@@ -247,7 +364,7 @@ const CampyLogin = ({ alIngresar }) => {
                     aria-pressed={verPassword}
                     className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-[#0A3895] focus:outline-none focus:ring-2 focus:ring-orange-500"
                   >
-                    {verPassword ? (
+{verPassword ? (
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M3 3l18 18" />
                         <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
@@ -267,11 +384,11 @@ const CampyLogin = ({ alIngresar }) => {
 
             {!modoRegistro && (
               <div className="flex justify-between items-center text-white text-[11px] font-medium px-2 mt-0.5">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4 rounded-sm accent-[#FF8C00]" />
-                  Recordarme
-                </label>
-                <a href="#recuperar" onClick={(e) => e.preventDefault()} className="hover:text-orange-300 transition-colors">
+                <a
+                  href="#recuperar"
+                  onClick={abrirModalRecuperacion}
+                  className="hover:text-orange-300 transition-colors underline underline-offset-2"
+                >
                   ¿Olvidaste tu contraseña?
                 </a>
               </div>
@@ -331,6 +448,206 @@ const CampyLogin = ({ alIngresar }) => {
             Ingresarás al catálogo estudiantil como <span className="text-white font-bold">Comprador</span>. Podrás darte de alta como vendedor desde tu perfil.
           </p>
         </div>
+
+        {/* MODAL DE RECUPERACIÓN DE CONTRASEÑA ESTILO GOOGLE */}
+        {modalRecuperar && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+            <div className="w-full max-w-[380px] bg-white rounded-2xl shadow-2xl p-6 text-gray-800 relative animate-fadeIn">
+              <button
+                type="button"
+                onClick={() => setModalRecuperar(false)}
+                aria-label="Cerrar ventana"
+                className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-700 font-bold"
+              >
+                ✕
+              </button>
+
+              {/* Encabezado tipo Google */}
+              <div className="flex flex-col items-center text-center mb-5">
+                <div className="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center mb-2">
+                  <svg className="w-6 h-6 text-[#1a73e8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                </div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  {pasoRecuperar === 1 && 'Recuperación de la cuenta'}
+                  {pasoRecuperar === 2 && 'Verifica tu identidad'}
+                  {pasoRecuperar === 3 && 'Cambia tu contraseña'}
+                  {pasoRecuperar === 4 && '¡Contraseña actualizada!'}
+                </h2>
+                {correoRecuperar && pasoRecuperar > 1 && pasoRecuperar < 4 && (
+                  <span className="mt-1 inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                    {correoRecuperar}
+                  </span>
+                )}
+              </div>
+
+              {errorRecuperar && (
+                <div role="alert" className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium text-center">
+                  {errorRecuperar}
+                </div>
+              )}
+
+              {mensajeRecuperar && !errorRecuperar && (
+                <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-xs font-medium text-center">
+                  {mensajeRecuperar}
+                </div>
+              )}
+
+              {/* PASO 1: Ingresar correo */}
+              {pasoRecuperar === 1 && (
+                <form onSubmit={enviarCodigoRecuperacion} className="space-y-4">
+                  <p className="text-xs text-gray-600 text-center leading-relaxed">
+                    Para ayudar a mantener tu cuenta segura, Campy quiere asegurarse de que realmente seas tú. Ingresa tu correo registrado para enviarte un código de verificación de 6 dígitos.
+                  </p>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Correo electrónico
+                    </label>
+                    <input
+                      type="email"
+                      value={correoRecuperar}
+                      onChange={(e) => setCorreoRecuperar(e.target.value)}
+                      placeholder="tucorreo@itoaxaca.edu.mx"
+                      required
+                      className="w-full px-4 py-3 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a73e8] focus:border-transparent"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setModalRecuperar(false)}
+                      className="px-4 py-2.5 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={cargandoRecuperar}
+                      className="px-5 py-2.5 rounded-lg text-xs font-bold bg-[#1a73e8] hover:bg-blue-700 text-white shadow-sm disabled:opacity-50"
+                    >
+                      {cargandoRecuperar ? 'Enviando...' : 'Siguiente'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* PASO 2: Ingresar el código de 6 dígitos */}
+              {pasoRecuperar === 2 && (
+                <form onSubmit={validarCodigoIngresado} className="space-y-4">
+                  <p className="text-xs text-gray-600 text-center leading-relaxed">
+                    Se acaba de enviar un correo electrónico con un código de verificación de 6 dígitos a <strong>{correoRecuperar}</strong>.
+                  </p>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1 text-center">
+                      Ingresa el código
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={codigoRecuperar}
+                      onChange={(e) => setCodigoRecuperar(e.target.value.replace(/\D/g, ''))}
+                      placeholder="••••••"
+                      required
+                      className="w-full px-4 py-3 rounded-xl border border-gray-300 text-center text-2xl font-bold tracking-[0.4em] text-[#1a73e8] focus:outline-none focus:ring-2 focus:ring-[#1a73e8]"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      type="button"
+                      onClick={enviarCodigoRecuperacion}
+                      disabled={cargandoRecuperar}
+                      className="text-xs font-bold text-[#1a73e8] hover:underline"
+                    >
+                      Reenviar código
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={cargandoRecuperar || codigoRecuperar.length !== 6}
+                      className="px-5 py-2.5 rounded-lg text-xs font-bold bg-[#1a73e8] hover:bg-blue-700 text-white shadow-sm disabled:opacity-50"
+                    >
+                      {cargandoRecuperar ? 'Verificando...' : 'Siguiente'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* PASO 3: Crear nueva contraseña */}
+              {pasoRecuperar === 3 && (
+                <form onSubmit={guardarNuevaPassword} className="space-y-3.5">
+                  <p className="text-xs text-gray-600 text-center">
+                    Crea una contraseña segura de al menos 8 caracteres que no uses en otros sitios.
+                  </p>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Nueva contraseña
+                    </label>
+                    <input
+                      type={verNuevaPass ? 'text' : 'password'}
+                      minLength={8}
+                      value={nuevaPass}
+                      onChange={(e) => setNuevaPass(e.target.value)}
+                      placeholder="Mínimo 8 caracteres"
+                      required
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a73e8]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Confirmar contraseña
+                    </label>
+                    <input
+                      type={verNuevaPass ? 'text' : 'password'}
+                      minLength={8}
+                      value={confirmarPass}
+                      onChange={(e) => setConfirmarPass(e.target.value)}
+                      placeholder="Repite tu nueva contraseña"
+                      required
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a73e8]"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={verNuevaPass}
+                      onChange={() => setVerNuevaPass(!verNuevaPass)}
+                      className="w-4 h-4 accent-[#1a73e8] rounded"
+                    />
+                    Mostrar contraseña
+                  </label>
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="submit"
+                      disabled={cargandoRecuperar}
+                      className="w-full py-2.5 rounded-lg text-xs font-bold bg-[#1a73e8] hover:bg-blue-700 text-white shadow-sm disabled:opacity-50"
+                    >
+                      {cargandoRecuperar ? 'Guardando...' : 'Guardar contraseña'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* PASO 4: Confirmación final */}
+              {pasoRecuperar === 4 && (
+                <div className="text-center space-y-4">
+                  <p className="text-xs text-gray-600 leading-relaxed">
+                    Tu contraseña ha sido restablecida con éxito. Ya puedes ingresar a Campy con tu correo y tu nueva contraseña.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setModalRecuperar(false)}
+                    className="w-full py-2.5 rounded-lg text-xs font-bold bg-[#FF8C00] hover:bg-[#e67e00] text-white shadow-md"
+                  >
+                    Ir a Iniciar Sesión
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
