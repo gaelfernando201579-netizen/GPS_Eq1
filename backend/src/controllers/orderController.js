@@ -317,7 +317,11 @@ async function consultarPedidos(req, res, campo) {
               d.id_producto, d.cantidad, d.precio_unitario,
               pr.nombre AS producto_nombre, pr.imagen_url,
               cal.estrellas AS calificacion_estrellas, cal.comentario AS calificacion_comentario,
-              mp.metodo AS metodo_pago
+              mp.metodo AS metodo_pago,
+              rp.estado AS estado_reparto, rp.id_repartidor,
+              rp.lugar_recoleccion, rp.punto_entrega AS punto_entrega_reparto,
+              rp.comision AS comision_repartidor,
+              ru.nombre AS repartidor_nombre
        FROM public.pedidos p
        JOIN public.usuarios c
          ON c.id_usuario = p.id_comprador
@@ -331,6 +335,10 @@ async function consultarPedidos(req, res, campo) {
          ON cal.id_pedido = p.id_pedido
        LEFT JOIN public.pedido_metodos_pago mp
          ON mp.pedido_id = p.id_pedido
+       LEFT JOIN public.pedido_repartos rp
+         ON rp.id_pedido = p.id_pedido
+       LEFT JOIN public.usuarios ru
+         ON ru.id_usuario = rp.id_repartidor
        WHERE p.${campo} = $1
          AND p.oculto_por_retiro_vendedor = FALSE
        ORDER BY p.fecha_pedido DESC,
@@ -350,12 +358,15 @@ async function consultarPedidos(req, res, campo) {
           tienda: `Vende: ${fila.vendedor_nombre}`,
           estado: fila.estado,
           total: Number(fila.total),
-          puntoEntrega: fila.punto_entrega_acordado,
+          puntoEntrega: fila.punto_entrega_reparto || fila.punto_entrega_acordado,
           hora: fila.horario_entrega_acordado,
-          lugarRecoleccion: 'Por acordar con el vendedor',
+          lugarRecoleccion: fila.lugar_recoleccion || 'Por acordar con el vendedor',
           metodoPago: fila.metodo_pago || 'Sin elegir',
-          requiereRepartidor: false,
-          repartidorAsignado: null,
+          requiereRepartidor: fila.estado_reparto !== null,
+          estadoReparto: fila.estado_reparto,
+          repartidorId: fila.id_repartidor,
+          repartidorAsignado: fila.repartidor_nombre || null,
+          comisionRepartidor: fila.comision_repartidor === null ? 0 : Number(fila.comision_repartidor),
           notaCancelacion: '',
           calificacion: fila.calificacion_estrellas === null ? null : {
             estrellas: Number(fila.calificacion_estrellas),
@@ -529,6 +540,9 @@ export async function actualizarEstadoPedidoVendedor(req, res) {
          AND id_vendedor = $3
          AND estado = ANY($4::text[])
          AND oculto_por_retiro_vendedor = FALSE
+         AND ($1 = 'Cancelado' OR NOT EXISTS (
+           SELECT 1 FROM public.pedido_repartos rp WHERE rp.id_pedido = $2
+         ))
        RETURNING id_pedido, estado`,
       [
         estadoNuevo,

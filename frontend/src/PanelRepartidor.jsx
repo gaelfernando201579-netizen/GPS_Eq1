@@ -7,28 +7,58 @@ const PanelRepartidor = ({
   tomarPedidoRepartidor,
   cambiarEstadoPedido,
   volverAModoCliente,
-  cerrarSesion
+  cerrarSesion,
+  errorPedidos = '',
+  refrescarPedidos = () => {}
 }) => {
   // 'disponibles' (bolsa Uber) | 'activos' (mis entregas aceptadas)
   const [tabActiva, setTabActiva] = useState('disponibles');
+  const [errorAccion, setErrorAccion] = useState('');
+  const [actualizando, setActualizando] = useState(false);
 
   const nombreRepartidor = usuario?.datosRepartidor?.nombre || usuario?.nombre || 'Repartidor ITO';
 
   // Pedidos que un vendedor solicitó con repartidor y nadie ha tomado aún
   const pedidosDisponibles = pedidos.filter(
-    (p) => p.requiereRepartidor && !p.repartidorAsignado && p.estado !== 'Cancelado' && p.estado !== 'Entregado'
+    (p) => p.requiereRepartidor && !p.repartidorId && p.estado !== 'Cancelado' && p.estado !== 'Entregado'
   );
 
   // Pedidos que este repartidor ya aceptó llevar
   const misEntregas = pedidos.filter(
-    (p) => p.requiereRepartidor && p.repartidorAsignado
+    (p) => p.requiereRepartidor && !!p.repartidorId
   );
 
   const entregasPendientesCount = misEntregas.filter((p) => p.estado !== 'Entregado' && p.estado !== 'Cancelado').length;
 
-  const aceptarViaje = (pedidoId) => {
-    tomarPedidoRepartidor(pedidoId, nombreRepartidor);
-    setTabActiva('activos');
+  const aceptarViaje = async (pedidoId) => {
+    setErrorAccion('');
+    try {
+      await tomarPedidoRepartidor(pedidoId);
+      setTabActiva('activos');
+    } catch (error) {
+      setErrorAccion(error.message || 'No fue posible aceptar el reparto.');
+    }
+  };
+
+  const actualizar = async () => {
+    setActualizando(true);
+    setErrorAccion('');
+    try {
+      await refrescarPedidos();
+    } catch (error) {
+      setErrorAccion(error.message || 'No se pudieron actualizar los repartos.');
+    } finally {
+      setActualizando(false);
+    }
+  };
+
+  const avanzar = async (id, estado) => {
+    setErrorAccion('');
+    try {
+      await cambiarEstadoPedido(id, estado);
+    } catch (error) {
+      setErrorAccion(error.message || 'No se pudo actualizar el reparto.');
+    }
   };
 
   return (
@@ -61,6 +91,9 @@ const PanelRepartidor = ({
 
         {/* CONTENIDO PRINCIPAL */}
         <div className="flex-1 overflow-y-auto pb-32 px-5 z-10 -mt-2 hide-scrollbar">
+          {(errorAccion || errorPedidos) && (
+            <p role="alert" className="text-xs font-bold text-red-600 mb-3">{errorAccion || errorPedidos}</p>
+          )}
           
           {/* Ficha rápida del repartidor */}
           <div className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100 mb-5 flex items-center justify-between">
@@ -87,9 +120,10 @@ const PanelRepartidor = ({
                 <h3 className="font-black text-sm text-gray-900 uppercase tracking-wide">
                   Solicitudes de Vendedores ({pedidosDisponibles.length})
                 </h3>
-                <span className="text-[10px] font-bold text-[#FF8C00] bg-orange-50 px-2.5 py-1 rounded-full">
-                  ⚡ En vivo
-                </span>
+                <button type="button" onClick={actualizar} disabled={actualizando}
+                  className="text-[10px] font-bold text-[#0A3895] bg-blue-50 px-2.5 py-1 rounded-full">
+                  {actualizando ? 'Actualizando...' : 'Actualizar'}
+                </button>
               </div>
 
               {pedidosDisponibles.length === 0 ? (
@@ -106,7 +140,7 @@ const PanelRepartidor = ({
                     <div key={ped.id} className="bg-white rounded-3xl p-4 shadow-sm border-2 border-[#22C55E] relative overflow-hidden">
                       <div className="flex justify-between items-center mb-3">
                         <span className="bg-green-100 text-green-700 text-[10px] font-black px-3 py-1 rounded-full uppercase">
-                          📦 Listo para recoger ({ped.estado})
+                          📦 Solicitud de entrega ({ped.estadoReparto})
                         </span>
                         <span className="text-xs font-black text-[#22C55E]">
                           + ${Number(ped.comisionRepartidor || 10).toFixed(2)} ganancia
@@ -198,7 +232,7 @@ const PanelRepartidor = ({
                   <span className="text-4xl block mb-2">🛵</span>
                   <p className="font-bold text-sm text-gray-700">No has tomado ningún pedido todavía</p>
                   <button
-                    onClick={() => setTabActiva('disponibles')}
+                    onClick={() => { setTabActiva('disponibles'); actualizar(); }}
                     className="mt-3 bg-[#0A3895] text-white font-bold text-xs px-4 py-2.5 rounded-xl"
                   >
                     Ver pedidos disponibles
@@ -226,35 +260,34 @@ const PanelRepartidor = ({
 
                         {!entregado ? (
                           <div className="flex flex-col gap-2">
-                            <p className="text-[10px] font-black uppercase text-gray-400">Actualizar estado al comprador:</p>
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                onClick={() => cambiarEstadoPedido(ped.id, 'En camino')}
-                                className={`py-2.5 px-3 rounded-xl font-bold text-xs border transition-all ${
-                                  ped.estado === 'En camino'
-                                    ? 'bg-[#FF8C00] text-white border-[#FF8C00]'
-                                    : 'bg-orange-50 text-[#FF8C00] border-orange-200'
-                                }`}
-                              >
-                                🛵 Ya voy en camino
+                            <p className="text-[10px] font-bold text-gray-600">Etapa: {ped.estadoReparto}</p>
+                            {ped.estadoReparto === 'Repartidor llegó' && (
+                              <button type="button" onClick={() => avanzar(ped.id, 'Recibí pedido')}
+                                className="w-full bg-[#0A3895] text-white font-bold py-3 rounded-xl">
+                                Recibí el pedido
                               </button>
-                              <button
-                                onClick={() => cambiarEstadoPedido(ped.id, 'En el punto de entrega')}
-                                className={`py-2.5 px-3 rounded-xl font-bold text-xs border transition-all ${
-                                  ped.estado === 'En el punto de entrega'
-                                    ? 'bg-[#0A3895] text-white border-[#0A3895]'
-                                    : 'bg-blue-50 text-[#0A3895] border-blue-200'
-                                }`}
-                              >
-                                📍 Ya estoy en el punto
+                            )}
+                            {ped.estadoReparto === 'Recibido' && (
+                              <button type="button" onClick={() => avanzar(ped.id, 'En camino')}
+                                className="w-full bg-[#FF8C00] text-white font-bold py-3 rounded-xl">
+                                En camino
                               </button>
-                            </div>
-                            <button
-                              onClick={() => cambiarEstadoPedido(ped.id, 'Entregado')}
-                              className="w-full bg-[#22C55E] hover:bg-[#16a34a] text-white font-black text-xs py-3 rounded-xl shadow-md mt-1"
-                            >
-                              ✓ Confirmar Pedido Entregado
-                            </button>
+                            )}
+                            {ped.estadoReparto === 'En camino' && (
+                              <button type="button" onClick={() => avanzar(ped.id, 'En el punto de entrega')}
+                                className="w-full bg-[#0A3895] text-white font-bold py-3 rounded-xl">
+                                Llegué al punto de entrega
+                              </button>
+                            )}
+                            {ped.estadoReparto === 'En el punto de entrega' && (
+                              <button type="button" onClick={() => avanzar(ped.id, 'Entregado')}
+                                className="w-full bg-[#22C55E] text-white font-bold py-3 rounded-xl">
+                                Marcar como entregado
+                              </button>
+                            )}
+                            {['Buscando repartidor', 'Aceptado', 'Listo'].includes(ped.estadoReparto) && (
+                              <p className="text-xs text-gray-600">Espera a que el vendedor tenga el pedido listo y confirme tu llegada.</p>
+                            )}
                           </div>
                         ) : (
                           <div className="bg-green-50 border border-green-200 text-green-700 text-xs font-bold p-3 rounded-xl text-center">
@@ -274,7 +307,7 @@ const PanelRepartidor = ({
         <div className="absolute bottom-0 w-full bg-white rounded-t-[30px] shadow-[0_-10px_20px_rgba(0,0,0,0.06)] px-12 py-2 flex justify-around items-end pb-5 z-20">
           <button
             type="button"
-            onClick={() => setTabActiva('disponibles')}
+            onClick={() => { setTabActiva('disponibles'); actualizar(); }}
             className="flex flex-col items-center cursor-pointer relative"
           >
             <div
@@ -298,7 +331,7 @@ const PanelRepartidor = ({
 
           <button
             type="button"
-            onClick={() => setTabActiva('activos')}
+            onClick={() => { setTabActiva('activos'); actualizar(); }}
             className="flex flex-col items-center cursor-pointer relative"
           >
             <div

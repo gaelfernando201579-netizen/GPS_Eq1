@@ -34,6 +34,8 @@ function App() {
   const [carritoGlobal, setCarritoGlobal] = useState({});
   const [pedidosPorCumplir, setPedidosPorCumplir] = useState([]);
   const [pedidosParaVendedor, setPedidosParaVendedor] = useState([]);
+  const [pedidosRepartidor, setPedidosRepartidor] = useState([]);
+  const [errorRepartos, setErrorRepartos] = useState('');
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [errorPedidos, setErrorPedidos] = useState('');
   const [actualizandoPedidos, setActualizandoPedidos] = useState(false);
@@ -174,23 +176,7 @@ function App() {
 
         if (vigente) {
           if (esVendedor) {
-            setPedidosParaVendedor((anteriores) => {
-              const porId = new Map(anteriores.map((pedido) => [String(pedido.id), pedido]));
-              return datos.map((pedido) => {
-                const anterior = porId.get(String(pedido.id));
-                if (!anterior || !anterior.requiereRepartidor) return pedido;
-                return {
-                  ...pedido,
-                  requiereRepartidor: true,
-                  repartidorAsignado: pedido.repartidorAsignado || anterior.repartidorAsignado,
-                  estadoReparto: pedido.estadoReparto || anterior.estadoReparto,
-                  costoProductoRepartidor: anterior.costoProductoRepartidor,
-                  lugarRecoleccion: anterior.lugarRecoleccion,
-                  comisionRepartidor: anterior.comisionRepartidor,
-                  puntoEntrega: anterior.puntoEntrega
-                };
-              });
-            });
+            setPedidosParaVendedor(datos);
           } else {
             setPedidosPorCumplir(datos);
           }
@@ -231,6 +217,68 @@ function App() {
       window.removeEventListener('focus', alEnfocar);
     };
   }, [pantallaActual, tokenAuth]);
+
+
+  useEffect(() => {
+    if (pantallaActual !== 'repartidor' || !tokenAuth) return;
+    let activo = true;
+    let consultando = false;
+    const consultar = async () => {
+      if (!activo || consultando || document.visibilityState === 'hidden') return;
+      consultando = true;
+      try {
+        const respuesta = await fetch(`${API_URL}/api/repartos`, {
+          headers: { Authorization: `Bearer ${tokenAuth}` },
+          cache: 'no-store'
+        });
+        const datos = await respuesta.json().catch(() => ({}));
+        if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudieron consultar los repartos.');
+        if (!Array.isArray(datos)) throw new Error('Respuesta de repartos inválida.');
+        if (activo) {
+          setPedidosRepartidor(datos);
+          setErrorRepartos('');
+        }
+      } catch (error) {
+        if (activo) setErrorRepartos(error.message || 'No se pudieron consultar los repartos.');
+      } finally {
+        consultando = false;
+      }
+    };
+    consultar();
+    const intervalo = setInterval(consultar, 8000);
+    const alVolver = () => { if (document.visibilityState === 'visible') consultar(); };
+    document.addEventListener('visibilitychange', alVolver);
+    window.addEventListener('focus', consultar);
+    return () => {
+      activo = false;
+      clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', alVolver);
+      window.removeEventListener('focus', consultar);
+    };
+  }, [pantallaActual, tokenAuth]);
+
+  const solicitarRepartoAPI = async (ruta, metodo = 'GET', cuerpo = null) => {
+    const token = localStorage.getItem('campy_token') || tokenAuth;
+    if (!token) throw new Error('Vuelve a iniciar sesión.');
+    const respuesta = await fetch(`${API_URL}/api/repartos${ruta}`, {
+      method: metodo,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      ...(cuerpo !== null ? { body: JSON.stringify(cuerpo) } : {})
+    });
+    const datos = await respuesta.json().catch(() => ({}));
+    if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo procesar el reparto.');
+    return datos;
+  };
+
+  const refrescarRepartos = async () => {
+    const datos = await solicitarRepartoAPI('/');
+    if (!Array.isArray(datos)) throw new Error('Respuesta de repartos inválida.');
+    setPedidosRepartidor(datos);
+    setErrorRepartos('');
+  };
 
   const procesarCompra = async (itemsComprados, datosEntrega) => {
     const token = localStorage.getItem('campy_token') || tokenAuth;
@@ -435,14 +483,30 @@ function App() {
 
   // Primero confirmar en Supabase; actualizar la pantalla solo si la BD respondió correctamente.
   const configurarAceptacionPedido = async (pedidoId, config) => {
-    const pedidoGuardado = await guardarEstadoEnSupabase(pedidoId, 'En preparación');
-    setPedidosParaVendedor((prev) =>
-      prev.map((p) => (p.id === pedidoId ? { ...p, ...config, estado: pedidoGuardado.estado } : p))
-    );
+    const datos = await solicitarRepartoAPI(`/pedido/${pedidoId}/aceptar`, 'POST', config);
+    setPedidosParaVendedor((prev) => prev.map((p) =>
+      p.id === pedidoId
+        ? { ...p, ...config, estado: datos.pedido.estado,
+            estadoReparto: datos.estadoReparto || null,
+            requiereRepartidor: datos.requiereRepartidor }
+        : p
+    ));
     refrescarPedidos();
+    return datos;
   };
 
   const cambiarEstadoPedidoVendedor = async (pedidoId, nuevoEstado, notaCancelacion = '') => {
+    const pedidoLocal = pedidosParaVendedor.find(p => String(p.id) === String(pedidoId));
+    if (pedidoLocal?.requiereRepartidor && ['Listo', 'Repartidor llegó'].includes(nuevoEstado)) {
+      const accion = nuevoEstado === 'Listo' ? 'listo' : 'repartidor_llego';
+      const resultado = await solicitarRepartoAPI(`/${pedidoId}/avanzar`, 'PATCH', { accion });
+      setPedidosParaVendedor(prev => prev.map(p => String(p.id) === String(pedidoId)
+        ? { ...p, estadoReparto: resultado.pedido.estadoReparto }
+        : p
+      ));
+      refrescarPedidos();
+      return resultado.pedido;
+    }
     const pedidoGuardado = await guardarEstadoEnSupabase(pedidoId, nuevoEstado);
     setPedidosParaVendedor((prev) =>
       prev.map((p) => p.id === pedidoId
@@ -455,18 +519,19 @@ function App() {
     refrescarPedidos();
   };
 
-  // Cuando el vendedor o repartidor cambia el estado (En preparación, En camino, En el punto de entrega, Entregado, Cancelado)
-  const cambiarEstadoPedido = async (pedidoId, nuevoEstado, notaCancelacion = '') => {
-    setPedidosPorCumplir((prev) =>
-      prev.map((p) => p.id === pedidoId
-        ? { ...p, estado: nuevoEstado, notaCancelacion: notaCancelacion || p.notaCancelacion }
-        : p)
-    );
-    setPedidosParaVendedor((prev) =>
-      prev.map((p) => p.id === pedidoId
-        ? { ...p, estado: nuevoEstado, notaCancelacion: notaCancelacion || p.notaCancelacion }
-        : p)
-    );
+  const cambiarEstadoPedido = async (pedidoId, nuevoEstado) => {
+    const acciones = {
+      'Recibí pedido': 'recibido',
+      'En camino': 'en_camino',
+      'En el punto de entrega': 'llegue',
+      'Entregado': 'entregado'
+    };
+    if (!acciones[nuevoEstado]) throw new Error('Acción de reparto inválida.');
+    const resultado = await solicitarRepartoAPI(`/${pedidoId}/avanzar`, 'PATCH', {
+      accion: acciones[nuevoEstado]
+    });
+    await refrescarRepartos();
+    return resultado;
   };
 
   const confirmarRecepcionPedido = async (pedidoId) => {
@@ -485,15 +550,10 @@ function App() {
     return datos.pedido;
   };
 
-  // Cuando un repartidor acepta llevar un pedido disponible
-  const tomarPedidoRepartidor = (pedidoId, nombreRepartidor) => {
-    setPedidosPorCumplir((prev) =>
-      prev.map((p) =>
-        p.id === pedidoId
-          ? { ...p, repartidorAsignado: nombreRepartidor, estado: 'En camino' }
-          : p
-      )
-    );
+  const tomarPedidoRepartidor = async (pedidoId) => {
+    const resultado = await solicitarRepartoAPI(`/${pedidoId}/aceptar`, 'PATCH');
+    await refrescarRepartos();
+    return resultado;
   };
 
   return (
@@ -623,7 +683,9 @@ function App() {
       {pantallaActual === 'repartidor' && (
         <PanelRepartidor
           usuario={usuarioActual}
-          pedidos={pedidosPorCumplir}
+          pedidos={pedidosRepartidor}
+          errorPedidos={errorRepartos}
+          refrescarPedidos={refrescarRepartos}
           tomarPedidoRepartidor={tomarPedidoRepartidor}
           cambiarEstadoPedido={cambiarEstadoPedido}
           volverAModoCliente={() => setPantallaActual('home')}

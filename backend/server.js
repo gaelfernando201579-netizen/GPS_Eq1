@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import authRoutes from './src/routes/authRoutes.js';
 import productRoutes from './src/routes/productRoutes.js';
 import orderRoutes from './src/routes/orderRoutes.js';
+import repartoRoutes from './src/routes/repartoRoutes.js';
 import userRoutes from './src/routes/userRoutes.js';
 import solicitudVendedorRoutes from './src/routes/solicitudVendedorRoutes.js';
 import cardRoutes from './src/routes/cardRoutes.js';
@@ -23,6 +24,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/productos', productRoutes);
 app.use('/api/pedidos', orderRoutes);
+app.use('/api/repartos', repartoRoutes);
 app.use('/api/usuarios', userRoutes);
 app.use('/api/solicitudes-vendedor', solicitudVendedorRoutes);
 
