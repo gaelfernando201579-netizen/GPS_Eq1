@@ -9,6 +9,7 @@ import orderRoutes from './src/routes/orderRoutes.js';
 import repartoRoutes from './src/routes/repartoRoutes.js';
 import userRoutes from './src/routes/userRoutes.js';
 import solicitudVendedorRoutes from './src/routes/solicitudVendedorRoutes.js';
+import solicitudRepartidorRoutes from './src/routes/solicitudRepartidorRoutes.js';
 import cardRoutes from './src/routes/cardRoutes.js';
 import paymentChoiceRoutes from './src/routes/paymentChoiceRoutes.js';
 
@@ -27,6 +28,7 @@ app.use('/api/pedidos', orderRoutes);
 app.use('/api/repartos', repartoRoutes);
 app.use('/api/usuarios', userRoutes);
 app.use('/api/solicitudes-vendedor', solicitudVendedorRoutes);
+app.use('/api/solicitudes-repartidor', solicitudRepartidorRoutes);
 
 app.use('/api/tarjetas', cardRoutes);
 app.use('/api/pedidos', paymentChoiceRoutes);

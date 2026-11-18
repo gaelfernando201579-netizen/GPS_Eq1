@@ -43,18 +43,15 @@ const CampyLogin = ({ alIngresar }) => {
   const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
   const cambiarCarrera = (opcion) => {
-    setCarreras((actuales) =>
-      actuales.includes(opcion)
-        ? actuales.filter((item) => item !== opcion)
-        : [...actuales, opcion]
-    );
+    setCarreras([opcion]);
+    setSelectorCarrerasAbierto(false);
   };
 
   const manejarSubmit = async (e) => {
     e.preventDefault();
     setError('');
     if (modoRegistro && carreras.length === 0) {
-      setError('Selecciona al menos una carrera.');
+      setError('Selecciona una carrera.');
       return;
     }
     setCargando(true);
@@ -289,7 +286,7 @@ const CampyLogin = ({ alIngresar }) => {
                   >
                     <span className={`block truncate ${carreras.length ? 'text-gray-800' : 'text-gray-400'}`}>
                       {carreras.length === 0
-                        ? 'Selecciona tu(s) carrera(s)'
+                        ? 'Selecciona tu carrera'
                         : carreras.length === 1
                           ? carreras[0]
                           : `${carreras.length} carreras seleccionadas`}
@@ -304,7 +301,8 @@ const CampyLogin = ({ alIngresar }) => {
                         {opcionesCarrera.map((opcion) => (
                           <label key={opcion} className="flex items-center gap-3 px-4 py-2 text-sm text-gray-800 cursor-pointer hover:bg-orange-50">
                             <input
-                              type="checkbox"
+                              type="radio"
+                              name="carrera"
                               checked={carreras.includes(opcion)}
                               onChange={() => cambiarCarrera(opcion)}
                               className="w-4 h-4 shrink-0 accent-[#FF8C00]"

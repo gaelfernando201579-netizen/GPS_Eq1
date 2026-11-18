@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
 import NavegacionComprador from './NavegacionComprador.jsx';
 import PagoComprador from './PagoComprador.jsx';
+import ComentarioEntrega from './ComentarioEntrega.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -246,6 +247,13 @@ const MisPedidos = ({
                   </div>
                 )}
 
+                {!estaCancelado && !estaEntregado && (
+                  <div className="mb-4">
+                    <ComentarioEntrega pedidoId={entrega.id} comentarioInicial={entrega.comentarioEntregaComprador}
+                      otros={[{nombre:'Vendedor',texto:entrega.comentarioEntregaVendedor},{nombre:'Repartidor',texto:entrega.comentarioEntregaRepartidor}]}
+                      onGuardado={refrescarPedidos}/>
+                  </div>
+                )}
                 {/* Barra de progreso de estados para el comprador */}
                 {!estaCancelado && (
                   <div className="flex justify-between items-center relative mb-5 px-2 mt-2">

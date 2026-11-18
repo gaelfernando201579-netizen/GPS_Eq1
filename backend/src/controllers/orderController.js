@@ -59,6 +59,9 @@ export async function crearPedido(req, res) {
     }
 
     const cantidades = normalizarItems(req.body?.items);
+    const metodoPago = String(req.body?.metodoPago || '').toLowerCase();
+    const metodos = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta' };
+    if (!metodos[metodoPago]) throw errorCliente('Elige un método de pago para enviar el pedido.');
     const puntoEntrega = req.body?.puntoEntrega?.trim();
     const horarioEntrega = req.body?.horarioEntrega;
     const fechaEntrega = new Date(horarioEntrega);
@@ -114,6 +117,12 @@ export async function crearPedido(req, res) {
     await client.query('BEGIN');
 
     const compradorId = Number(req.usuario.id);
+    const tarjetaId = metodoPago === 'tarjeta' ? Number(req.body?.idTarjeta) : null;
+    if (metodoPago === 'tarjeta') {
+      if (!Number.isSafeInteger(tarjetaId) || tarjetaId < 1) throw errorCliente('Selecciona una tarjeta de prueba guardada.');
+      const tarjeta = await client.query('SELECT 1 FROM public.tarjetas_guardadas WHERE id_usuario=$1 AND id_tarjeta=$2', [compradorId, tarjetaId]);
+      if (!tarjeta.rowCount) throw errorCliente('La tarjeta no pertenece a tu cuenta.', 403);
+    }
 
     const comprador = await client.query(
       `SELECT id_usuario
@@ -238,6 +247,8 @@ export async function crearPedido(req, res) {
       );
 
       const idPedido = creado.rows[0].id_pedido;
+      await client.query(`INSERT INTO public.pedido_metodos_pago (pedido_id,id_comprador,metodo,id_tarjeta)
+        VALUES ($1,$2,$3,$4)`,[idPedido,compradorId,metodos[metodoPago],tarjetaId]);
 
       for (const producto of productos) {
         const precio = Number(producto.precio).toFixed(2);
@@ -321,6 +332,7 @@ async function consultarPedidos(req, res, campo) {
               rp.estado AS estado_reparto, rp.id_repartidor,
               rp.lugar_recoleccion, rp.punto_entrega AS punto_entrega_reparto,
               rp.comision AS comision_repartidor,
+              p.comentario_entrega_comprador,p.comentario_entrega_vendedor,p.comentario_entrega_repartidor,
               ru.nombre AS repartidor_nombre
        FROM public.pedidos p
        JOIN public.usuarios c
@@ -358,7 +370,7 @@ async function consultarPedidos(req, res, campo) {
           tienda: `Vende: ${fila.vendedor_nombre}`,
           estado: fila.estado,
           total: Number(fila.total),
-          puntoEntrega: fila.punto_entrega_reparto || fila.punto_entrega_acordado,
+          puntoEntrega: fila.punto_entrega_acordado,
           hora: fila.horario_entrega_acordado,
           lugarRecoleccion: fila.lugar_recoleccion || 'Por acordar con el vendedor',
           metodoPago: fila.metodo_pago || 'Sin elegir',
@@ -368,6 +380,9 @@ async function consultarPedidos(req, res, campo) {
           repartidorAsignado: fila.repartidor_nombre || null,
           comisionRepartidor: fila.comision_repartidor === null ? 0 : Number(fila.comision_repartidor),
           notaCancelacion: '',
+          comentarioEntregaComprador: fila.comentario_entrega_comprador || '',
+          comentarioEntregaVendedor: fila.comentario_entrega_vendedor || '',
+          comentarioEntregaRepartidor: fila.comentario_entrega_repartidor || '',
           calificacion: fila.calificacion_estrellas === null ? null : {
             estrellas: Number(fila.calificacion_estrellas),
             comentario: fila.calificacion_comentario || ''

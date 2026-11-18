@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { verificarToken } from '../middleware/auth.js';
+import { consultarMiSolicitud,enviarSolicitudRepartidor,solicitudesPendientesRepartidor,revisarSolicitudRepartidor } from '../controllers/solicitudRepartidorController.js';
+const router=Router();
+router.use(verificarToken);
+router.get('/mia',consultarMiSolicitud);
+router.post('/',enviarSolicitudRepartidor);
+router.get('/pendientes',solicitudesPendientesRepartidor);
+router.patch('/:id/revisar',revisarSolicitudRepartidor);
+export default router;

@@ -6,6 +6,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 export default function PanelModerador({ token, usuario, productos = [], cargandoProductos = false, errorProductos = '', eliminarPublicacion, alCambiarCatalogo = () => {}, cerrarSesion }) {
   const [pestana, setPestana] = useState('vendedor');
   const [solicitudes, setSolicitudes] = useState([]);
+  const [solicitudesRepartidor, setSolicitudesRepartidor] = useState([]);
+  const [cargandoRepartidores, setCargandoRepartidores] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [procesando, setProcesando] = useState(null);
   const [comentarios, setComentarios] = useState({});
@@ -19,6 +21,7 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
   const [productoPorInhabilitar, setProductoPorInhabilitar] = useState(null);
   const [inhabilitandoProducto, setInhabilitandoProducto] = useState(false);
   const [filtroProducto, setFiltroProducto] = useState('');
+  const [textoFiltro, setTextoFiltro] = useState('');
   const [tipoBusqueda, setTipoBusqueda] = useState('producto');
 
   const cargar = useCallback(async () => {
@@ -55,7 +58,37 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
     }
   }, [token]);
 
-  useEffect(() => { cargar(); cargarVendedores(); }, [cargar, cargarVendedores]);
+  const cargarRepartidores = useCallback(async () => {
+    setCargandoRepartidores(true);
+    try {
+      const r = await fetch(`${API_URL}/api/solicitudes-repartidor/pendientes`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const datos = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(datos.mensaje || 'No se pudieron consultar las solicitudes de reparto.');
+      setSolicitudesRepartidor(Array.isArray(datos) ? datos : []);
+    } catch (e) { setError(e.message); }
+    finally { setCargandoRepartidores(false); }
+  }, [token]);
+
+  const revisarRepartidor = async (s, decision) => {
+    setProcesando(`rep-${s.id_solicitud}`);
+    setError('');
+    try {
+      const r = await fetch(`${API_URL}/api/solicitudes-repartidor/${s.id_solicitud}/revisar`, {
+        method: 'PATCH',
+        headers: {'Content-Type':'application/json',Authorization:`Bearer ${token}`},
+        body: JSON.stringify({ decision, comentario: comentarios[`rep-${s.id_solicitud}`] || '' })
+      });
+      const datos = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(datos.mensaje || 'No se pudo revisar al repartidor.');
+      setSolicitudesRepartidor(actual => actual.filter(x => x.id_solicitud !== s.id_solicitud));
+      setAviso(datos.mensaje);
+    } catch(e) { setError(e.message); }
+    finally { setProcesando(null); }
+  };
+
+  useEffect(() => { cargar(); cargarVendedores(); cargarRepartidores(); }, [cargar, cargarVendedores, cargarRepartidores]);
 
   const quitarVendedor = async () => {
     if (!vendedorPorQuitar || quitandoVendedor) return;
@@ -171,11 +204,13 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
                   <input
                     id="filtro-catalogo-moderador"
                     type="search"
-                    value={filtroProducto}
-                    onChange={e => setFiltroProducto(e.target.value)}
+                    value={textoFiltro}
+                    onChange={e => setTextoFiltro(e.target.value)}
+                    onKeyDown={e => { if(e.key==='Enter'){e.preventDefault();setFiltroProducto(textoFiltro);} }}
                     placeholder={tipoBusqueda === 'producto' ? 'Nombre del producto' : 'Nombre del vendedor'}
                     className="min-w-0 flex-1 bg-white text-gray-900 border border-gray-200 rounded-xl px-3 py-3 text-xs"
                   />
+                  <button type="button" className="bg-[#0A3895] text-white rounded-xl px-3 text-xs font-bold" onClick={() => setFiltroProducto(textoFiltro)}>Buscar</button>
                 </div>
               </div>
               {error && <p role="alert" className="mb-3 text-xs text-red-700">{error}</p>}
@@ -224,7 +259,7 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
             <>
               <div className="flex items-center justify-between mb-5">
                 <h3 className="font-black text-[#0A3895] text-sm">Pendientes ({solicitudes.length})</h3>
-                <button type="button" onClick={() => { cargar(); cargarVendedores(); }} className="text-xs font-bold text-[#0A3895] bg-blue-50 rounded-xl px-3 py-2">Actualizar</button>
+                <button type="button" onClick={() => { cargar(); cargarVendedores(); cargarRepartidores(); }} className="text-xs font-bold text-[#0A3895] bg-blue-50 rounded-xl px-3 py-2">Actualizar</button>
               </div>
               {error && <p role="alert" className="text-red-700 bg-red-50 border border-red-200 p-3 rounded-xl text-sm mb-4">{error}</p>}
               {aviso && <p role="status" className="text-green-800 bg-green-50 border border-green-200 p-3 rounded-xl text-sm mb-4">{aviso}</p>}
@@ -263,6 +298,32 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
                   </div>
                 </div>
               ))}
+
+              <section className="mt-8 border-t border-gray-200 pt-6" aria-label="Solicitudes de repartidor">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-black text-[#0A3895] text-sm">Solicitudes de repartidor ({solicitudesRepartidor.length})</h3>
+                  <button type="button" onClick={cargarRepartidores} className="text-xs font-bold text-[#0A3895] bg-blue-50 rounded-xl px-3 py-2">Actualizar</button>
+                </div>
+                {cargandoRepartidores ? <p className="text-xs text-gray-500">Consultando solicitudes...</p> :
+                  !solicitudesRepartidor.length ? <p className="text-xs text-gray-500 mb-4">Sin solicitudes pendientes.</p> :
+                  solicitudesRepartidor.map(s => (
+                    <div key={s.id_solicitud} className="bg-white rounded-2xl border border-gray-100 p-4 mb-3 space-y-2">
+                      <p className="font-black text-sm">{s.nombre}</p>
+                      <p className="text-xs text-gray-500">{s.correo} · {s.numero_control}</p>
+                      <p className="text-xs text-gray-700"><strong>Zonas:</strong> {s.zonas}</p>
+                      <textarea rows={2} value={comentarios[`rep-${s.id_solicitud}`] || ''}
+                        onChange={e => setComentarios(prev => ({...prev,[`rep-${s.id_solicitud}`]:e.target.value}))}
+                        placeholder="Motivo o comentario (opcional)" maxLength={500}
+                        className="w-full text-xs border border-gray-200 rounded-xl p-3" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <button type="button" disabled={procesando!==null} onClick={() => revisarRepartidor(s,'Rechazada')}
+                          className="bg-red-50 text-red-700 rounded-xl py-3 text-xs font-black">Rechazar</button>
+                        <button type="button" disabled={procesando!==null} onClick={() => revisarRepartidor(s,'Aprobada')}
+                          className="bg-[#22C55E] text-white rounded-xl py-3 text-xs font-black">Aprobar</button>
+                      </div>
+                    </div>
+                  ))}
+              </section>
 
               <section className="mt-8 border-t border-gray-200 pt-6" aria-label="Vendedores activos">
                 <div className="flex items-center justify-between gap-3 mb-4">

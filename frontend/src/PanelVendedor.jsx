@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import ComentarioEntrega from './ComentarioEntrega.jsx';
+import { EDIFICIOS_ITO } from './ubicacionesITO.js';
 import logoCampy from './assets/logo.png';
-import { supabase } from './config/supabase';
 
 const DIAS_SEMANA = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
-const BLOQUES_HORA = ['08-10', '10-12', '12-14', '14-16', '16-18'];
+const BLOQUES_HORA = Array.from({length:11},(_,i)=>`${String(i+7).padStart(2,'0')}-${String(i+8).padStart(2,'0')}`);
 
 const PanelVendedor = ({
   usuario,
@@ -19,6 +20,7 @@ const PanelVendedor = ({
   refrescarPedidos = () => {},
   configurarAceptacionPedido,
   cambiarEstadoPedidoVendedor,
+  liberarReparto,
   volverAModoCliente,
   cerrarSesion
 }) => {
@@ -31,12 +33,24 @@ const PanelVendedor = ({
   const [productoEditandoId, setProductoEditandoId] = useState(null);
   const [prodNombre, setProdNombre] = useState('');
   const [prodPrecio, setProdPrecio] = useState('');
-  const [prodCategoria, setProdCategoria] = useState('Comida');
+  const [prodCategoria, setProdCategoria] = useState('');
+  const [categoriasDisponibles, setCategoriasDisponibles] = useState([]);
   const [prodDefinicion, setProdDefinicion] = useState('');
   const [prodComentario, setProdComentario] = useState('');
   const [prodImagen, setProdImagen] = useState(null);
   const [archivoFoto, setArchivoFoto] = useState(null);
+  useEffect(() => {
+    let activo=true;
+    fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/productos/categorias`)
+      .then(async r => {if(!r.ok)throw new Error('Categorías no disponibles');return r.json();})
+      .then(lista => {if(activo&&Array.isArray(lista)){
+        setCategoriasDisponibles(lista);setProdCategoria(actual=>lista.includes(actual)?actual:(lista[0]||''));
+      }}).catch(()=>{});
+    return()=>{activo=false;};
+  },[]);
   const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const guardandoProductoRef=useRef(false);
+  const claveProductoRef=useRef('');
   // Estados para editar datos y horario del vendedor
   const [nombreVendedor, setNombreVendedor] = useState(usuario?.datosVendedor?.nombre || usuario?.nombre || '');
   const [giroVenta, setGiroVenta] = useState(usuario?.datosVendedor?.queVende || '');
@@ -87,9 +101,10 @@ const PanelVendedor = ({
 
   const abrirModalNuevoProducto = () => {
     setProductoEditandoId(null);
+    claveProductoRef.current=globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setProdNombre('');
     setProdPrecio('');
-    setProdCategoria('Comida');
+    setProdCategoria(categoriasDisponibles[0] || '');
     setProdDefinicion('');
     setProdComentario('');
     setProdImagen(null);
@@ -99,12 +114,13 @@ const PanelVendedor = ({
 
   const abrirModalEditarProducto = (prod) => {
     setProductoEditandoId(prod.id);
+    claveProductoRef.current='';
     setProdNombre(prod.nombre);
     setProdPrecio(prod.precio);
     setProdCategoria(prod.categoria || 'Comida');
-    setProdDefinicion(prod.definicion || '');
+    setProdDefinicion(prod.descripcion || prod.definicion || '');
     setProdComentario(prod.comentario || '');
-    setProdImagen(prod.imagen || null);
+    setProdImagen(prod.imagen_url || prod.imagen || null);
     setModalActivo('producto');
   };
 
@@ -125,33 +141,24 @@ const PanelVendedor = ({
 
   const guardarProducto = async (e) => {
     e.preventDefault();
-    if (!prodNombre.trim() || !prodPrecio) return;
+    if (!prodNombre.trim() || !prodPrecio || !prodCategoria || guardandoProductoRef.current) return;
+    guardandoProductoRef.current=true;
     setSubiendoFoto(true);
     let urlImagenFinal = prodImagen;
     try {
       if (archivoFoto) {
-        const BUCKET_NAME = 'products';
-        const extension = archivoFoto.name.split('.').pop();
-        const nombreArchivo = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${extension}`;
-        const rutaArchivo = `fotos/${nombreArchivo}`;
-
-        const { error: errorSubida } = await supabase.storage
-          .from(BUCKET_NAME)
-          .upload(rutaArchivo, archivoFoto, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (errorSubida) {
-          console.error('Error al subir imagen a Supabase:', errorSubida);
-          alert('No se pudo subir la foto: ' + errorSubida.message);
-          setSubiendoFoto(false);
-          return;
-        }
-        const { data: dataUrl } = supabase.storage
-          .from(BUCKET_NAME)
-          .getPublicUrl(rutaArchivo);
-        urlImagenFinal = dataUrl.publicUrl;
+        const token = localStorage.getItem('campy_token');
+        if (!token) throw new Error('Inicia sesión para subir una foto.');
+        const formulario = new FormData();
+        formulario.append('foto', archivoFoto);
+        const respuesta = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/productos/foto`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formulario
+        });
+        const datos = await respuesta.json().catch(() => ({}));
+        if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo subir la imagen.');
+        urlImagenFinal = datos.imagen_url;
       }
 
       const datosVend = usuario?.datosVendedor || {};
@@ -162,7 +169,8 @@ const PanelVendedor = ({
         definicion: prodDefinicion.trim(),
         comentario: prodComentario.trim(),
         imagen: urlImagenFinal,
-        imagen_url: urlImagenFinal, // Ambos campos para compatibilidad
+        imagen_url: urlImagenFinal,
+        claveCreacion: claveProductoRef.current,
         tienda: `Vende: ${datosVend.nombre || usuario?.nombre || 'Estudiante'}`,
         ubicacion: datosVend.ubicacion || 'Campus ITO',
         horario: datosVend.horarios || 'Horario escolar',
@@ -178,8 +186,9 @@ const PanelVendedor = ({
       setModalActivo(null);
     } catch (err) {
       console.error('Error guardando producto:', err);
-      alert('Error al guardar el producto');
+      setErrorProducto(err.message || 'Error al guardar el producto');
     } finally {
+      guardandoProductoRef.current=false;
       setSubiendoFoto(false);
     }
   };
@@ -205,7 +214,7 @@ const PanelVendedor = ({
     setModoEntrega(pedido.requiereRepartidor ? 'repartidor' : 'propio');
     setCostoParaRepartidor(String(pedido.total || ''));
     setDondeRecogeRepartidor(usuario?.datosVendedor?.ubicacion || 'Kiosco Central / Edificio L');
-    setDondeDejaRepartidor(pedido.puntoEntrega || 'Edificio L - Salón L3');
+    setDondeDejaRepartidor(pedido.puntoEntrega || '');
     setComisionRepartidor('10');
     setModalActivo('gestionarPedido');
   };
@@ -220,9 +229,9 @@ const PanelVendedor = ({
       await configurarAceptacionPedido(pedidoSeleccionado.id, {
         estado: 'En preparación',
         requiereRepartidor: necesitaRep,
-        costoProductoRepartidor: necesitaRep ? parseFloat(costoParaRepartidor || pedidoSeleccionado.total) : pedidoSeleccionado.total,
+        costoProductoRepartidor: pedidoSeleccionado.total,
         lugarRecoleccion: necesitaRep ? dondeRecogeRepartidor.trim() : '',
-        puntoEntrega: necesitaRep ? dondeDejaRepartidor.trim() : pedidoSeleccionado.puntoEntrega,
+        puntoEntrega: pedidoSeleccionado.puntoEntrega,
         comisionRepartidor: necesitaRep ? parseFloat(comisionRepartidor || 10) : 0
       });
       setPedidoSeleccionado(null);
@@ -230,6 +239,27 @@ const PanelVendedor = ({
     } catch (error) {
       setErrorAccionPedido(error.message || 'No se pudo confirmar el pedido.');
     }
+  };
+
+  const liberarPedidoParaOtro = async (ped) => {
+    const motivo = window.prompt('¿Por qué no llegó el repartidor? Escribe al menos 8 caracteres.');
+    if (motivo === null) return;
+    if (motivo.trim().length < 8) { setErrorAccionPedido('Explica por qué no llegó el repartidor.'); return; }
+    if (!window.confirm('¿Liberar este pedido para que lo pueda tomar otro repartidor?')) return;
+    setErrorAccionPedido('');
+    try { await liberarReparto(ped.id, motivo.trim()); refrescarPedidos(); }
+    catch (e) { setErrorAccionPedido(e.message || 'No fue posible liberar el reparto.'); }
+  };
+
+  const descartarAviso = async (id) => {
+    try {
+      const token = localStorage.getItem('campy_token');
+      const r = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/productos/mis-avisos/${id}/descartar`, {
+        method:'POST',headers:{Authorization:`Bearer ${token}`}
+      });
+      if (!r.ok) throw new Error('No se pudo descartar el aviso.');
+      setAvisosModeracion(actual => actual.filter(a => a.id_producto !== id));
+    } catch(e) { setErrorProducto(e.message); }
   };
 
   const abrirModalCancelar = (pedido) => {
@@ -366,8 +396,8 @@ const PanelVendedor = ({
                     <div key={prod.id} className="bg-white rounded-2xl p-3.5 shadow-sm border border-gray-100 flex flex-col gap-3">
                       <div className="flex items-center gap-3.5">
                         <div className="w-16 h-16 rounded-2xl bg-gray-100 overflow-hidden shrink-0 flex items-center justify-center border border-gray-200">
-                          {prod.imagen ? (
-                            <img src={prod.imagen} alt={prod.nombre} className="w-full h-full object-cover" />
+                          {(prod.imagen_url || prod.imagen) ? (
+                            <img src={prod.imagen_url || prod.imagen} alt={prod.nombre} className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-[10px] text-gray-400 font-bold">SIN FOTO</span>
                           )}
@@ -455,9 +485,12 @@ const PanelVendedor = ({
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
                     <h3 className="font-black text-sm">Avisos de publicaciones retiradas</h3>
                     {avisosModeracion.map(aviso => (
-                      <p key={aviso.id_producto} className="mt-2 text-xs leading-relaxed">
-                        El producto <strong>{aviso.nombre}</strong> fue inhabilitado{aviso.origen_inhabilitacion === 'Moderación' ? ' por moderación' : ' tras el retiro del rol de vendedor'}. Ya no aparece en el catálogo.
-                      </p>
+                      <div key={aviso.id_producto} className="mt-2 flex items-start gap-2 text-xs leading-relaxed">
+                        <p className="flex-1">El producto <strong>{aviso.nombre}</strong> fue inhabilitado{aviso.origen_inhabilitacion === 'Moderación' ? ' por moderación' : ' tras el retiro del rol de vendedor'}. Ya no aparece en el catálogo.</p>
+                        <button type="button" onClick={() => descartarAviso(aviso.id_producto)}
+                          aria-label="Descartar aviso" title="No volver a mostrar"
+                          className="bg-white border border-amber-200 rounded-lg px-2 py-1 font-black text-amber-900">×</button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -639,6 +672,12 @@ const PanelVendedor = ({
                                 className="bg-[#FF8C00] text-white rounded-xl p-3 font-bold">🛵 El repartidor llegó</button>
                             )}
                             {ped.estadoReparto === 'Listo' && !ped.repartidorAsignado && <p>Esperando que un repartidor acepte el pedido.</p>}
+                            {ped.repartidorId && ['Aceptado','Listo','Repartidor llegó'].includes(ped.estadoReparto) && (
+                              <button type="button" onClick={() => liberarPedidoParaOtro(ped)}
+                                className="w-full bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl p-3">
+                                El repartidor no llegó · Liberar pedido
+                              </button>
+                            )}
                             {['Repartidor llegó', 'Recibido', 'En camino', 'En el punto de entrega'].includes(ped.estadoReparto) &&
                               <p>Entrega a cargo del repartidor: {ped.estadoReparto}</p>}
                           </div>
@@ -702,6 +741,12 @@ const PanelVendedor = ({
                               </button>
                             </div>
                           </div>
+                        )}
+
+                        {!estaEntregado && !estaCancelado && (
+                          <ComentarioEntrega pedidoId={ped.id} comentarioInicial={ped.comentarioEntregaVendedor}
+                            otros={[{nombre:'Comprador',texto:ped.comentarioEntregaComprador},{nombre:'Repartidor',texto:ped.comentarioEntregaRepartidor}]}
+                            onGuardado={refrescarPedidos} />
                         )}
 
                         {/* CALIFICACIÓN REAL DEL COMPRADOR */}
@@ -866,15 +911,9 @@ const PanelVendedor = ({
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[10px] font-bold text-gray-600 block mb-1">Costo del producto ($)</label>
-                      <input
-                        type="number"
-                        step="0.5"
-                        value={costoParaRepartidor}
-                        onChange={(e) => setCostoParaRepartidor(e.target.value)}
-                        placeholder="Ej. 70"
-                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-800 outline-none focus:border-[#FF8C00]"
-                        required
-                      />
+                      <p className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-800">
+                        ${Number(pedidoSeleccionado.total).toFixed(2)} · precio fijado al comprar
+                      </p>
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-gray-600 block mb-1">Propina/Envío Repartidor ($)</label>
@@ -899,6 +938,7 @@ const PanelVendedor = ({
                       value={dondeRecogeRepartidor}
                       onChange={(e) => setDondeRecogeRepartidor(e.target.value)}
                       placeholder="Ej. Kiosco Central / Mesas del Edificio D"
+                      list="edificios-recoleccion-ito"
                       className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#FF8C00]"
                       required
                     />
@@ -908,15 +948,11 @@ const PanelVendedor = ({
                     <label className="text-[10px] font-bold text-gray-600 block mb-1">
                       ¿Dónde lo va a dejar al comprador?
                     </label>
-                    <input
-                      type="text"
-                      value={dondeDejaRepartidor}
-                      onChange={(e) => setDondeDejaRepartidor(e.target.value)}
-                      placeholder="Ej. Edificio L - Salón L3"
-                      className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#FF8C00]"
-                      required
-                    />
+                    <p className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800">
+                      {pedidoSeleccionado.puntoEntrega}
+                    </p>
                   </div>
+                  <datalist id="edificios-recoleccion-ito">{EDIFICIOS_ITO.map(l=><option key={l} value={l}/>)}</datalist>
                 </div>
               )}
 
@@ -955,7 +991,7 @@ const PanelVendedor = ({
                 <div className="flex justify-between items-center mb-1">
                   <label className="text-[11px] font-bold text-gray-600">Imagen del Producto</label>
                   {prodImagen && (
-                    <button type="button" onClick={() => setProdImagen(null)} className="text-[10px] font-bold text-red-500">
+                    <button type="button" onClick={() => { setProdImagen(null); setArchivoFoto(null); }} className="text-[10px] font-bold text-red-500">
                       Quitar imagen
                     </button>
                   )}
@@ -970,6 +1006,10 @@ const PanelVendedor = ({
                     </>
                   )}
                   <input type="file" accept="image/*" onChange={manejarSeleccionFoto} className="hidden" />
+                </label>
+                <label className="inline-flex items-center justify-center mt-2 bg-blue-50 text-[#0A3895] border border-blue-100 p-2 rounded-xl text-xs font-bold cursor-pointer">
+                  📸 Tomar foto con la cámara
+                  <input type="file" accept="image/*" capture="environment" onChange={manejarSeleccionFoto} className="hidden" />
                 </label>
               </div>
 
@@ -1007,13 +1047,9 @@ const PanelVendedor = ({
                   onChange={(e) => setProdCategoria(e.target.value)}
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 outline-none focus:border-[#FF8C00]"
                 >
-                  <option value="Comida">Comida</option>
-                  <option value="Postres">Postres</option>
-                  <option value="Bebidas">Bebidas</option>
-                  <option value="Sabritas">Sabritas</option>
-                  <option value="Dulces">Dulces</option>
-                  <option value="Papelería">Papelería</option>
-                  <option value="Tecnología">Tecnología</option>
+                  {categoriasDisponibles.length ?
+                    categoriasDisponibles.map(nombre=><option key={nombre} value={nombre}>{nombre}</option>) :
+                    <option value="">Cargando categorías...</option>}
                 </select>
               </div>
 
@@ -1133,6 +1169,7 @@ const PanelVendedor = ({
                   <input
                     type="text"
                     value={ubicacionBase}
+                    list="edificios-vendedor-panel"
                     onChange={(e) => setUbicacionBase(e.target.value)}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#0A3895]"
                     required
@@ -1140,6 +1177,7 @@ const PanelVendedor = ({
                 </div>
               </div>
 
+              <datalist id="edificios-vendedor-panel">{EDIFICIOS_ITO.map(l=><option key={l} value={l}/>)}</datalist>
               <div className="bg-[#F4F7FD] border border-blue-100 rounded-2xl p-3">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-[11px] font-black text-[#0A3895] uppercase">Organizador de Horarios</span>

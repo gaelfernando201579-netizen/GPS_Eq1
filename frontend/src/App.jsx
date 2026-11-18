@@ -17,9 +17,9 @@ function App() {
   const [tokenAuth, setTokenAuth] = useState(localStorage.getItem('campy_token') || null);
   const [solicitudVendedor, setSolicitudVendedor] = useState(null);
   const [usuarioActual, setUsuarioActual] = useState({
-    nombre: 'Carlos Yahel Alemán Cruz',
-    correo: 'estudiante@itoaxaca.edu.mx',
-    carrera: 'Ing. Sistemas Computacionales',
+    nombre: '',
+    correo: '',
+    carrera: '',
     esVendedor: false,
     datosVendedor: null,
     esRepartidor: false,
@@ -114,18 +114,17 @@ function App() {
       setTokenAuth(token);
     }
     if (datosUsuario) {
-      setUsuarioActual((prev) => ({
-        ...prev,
-        nombre: datosUsuario.nombre || prev.nombre,
-        correo: datosUsuario.correo || prev.correo,
-        carrera: datosUsuario.carrera || prev.carrera,
+      setUsuarioActual({
+        nombre: datosUsuario.nombre || '',
+        correo: datosUsuario.correo || '',
+        carrera: datosUsuario.carrera || '',
         id_usuario: datosUsuario.id_usuario,
         esVendedor: datosUsuario.esVendedor === true,
         datosVendedor: null,
         esRepartidor: datosUsuario.esRepartidor === true,
         esModerador: datosUsuario.esModerador === true,
         datosRepartidor: null
-      }));
+      });
     }
     setSolicitudVendedor(null);
     setPantallaActual(
@@ -296,7 +295,9 @@ function App() {
           cantidad: Number(item.cantidad)
         })),
         puntoEntrega: datosEntrega.puntoEntrega,
-        horarioEntrega: datosEntrega.horarioEntrega
+        horarioEntrega: datosEntrega.horarioEntrega,
+        metodoPago: datosEntrega.metodoPago,
+        idTarjeta: datosEntrega.idTarjeta || null
       })
     });
     const resultado = await respuesta.json().catch(() => ({}));
@@ -348,106 +349,47 @@ function App() {
   }, [pantallaActual, tokenAuth]);
 
   const registrarComoRepartidor = async (datosRepartidor) => {
-    setUsuarioActual((prev) => ({
-      ...prev,
-      esRepartidor: true,
-      datosRepartidor
-    }));
-    setPantallaActual('repartidor');
+    if (!tokenAuth) throw new Error('Inicia sesión para solicitar el rol.');
+    const respuesta = await fetch(`${API_URL}/api/solicitudes-repartidor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenAuth}` },
+      body: JSON.stringify(datosRepartidor)
+    });
+    const datos = await respuesta.json().catch(() => ({}));
+    if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo registrar la solicitud.');
+    return datos;
   };
 
-  const agregarNuevoProducto = async (nuevoProd) => {
-    try {
-      const { data: categoriasDB, error: errorCat } = await supabase
-        .from('categorias')
-        .select('id_categoria, nombre');
-
-      if (errorCat) {
-        alert('No se pudieron consultar las categorías: ' + errorCat.message);
-        return;
-      }
-
-      if (!categoriasDB || categoriasDB.length === 0) {
-        alert('No hay categorías disponibles. Intenta más tarde.');
-        return;
-      }
-
-      const catEncontrada = categoriasDB.find(
-        (c) => c.nombre?.trim().toLowerCase() === (nuevoProd.categoria || '').trim().toLowerCase()
-      );
-
-      const idCategoriaReal = catEncontrada ? catEncontrada.id_categoria : categoriasDB[0].id_categoria;
-
-      let idVendedorReal = usuarioActual?.id_usuario;
-      if (!idVendedorReal && usuarioActual?.correo) {
-        const { data: uData } = await supabase
-          .from('usuarios')
-          .select('id_usuario')
-          .eq('correo', usuarioActual.correo)
-          .maybeSingle();
-        if (uData?.id_usuario) idVendedorReal = uData.id_usuario;
-      }
-      if (!idVendedorReal) {
-        const { data: primerUser } = await supabase
-          .from('usuarios')
-          .select('id_usuario')
-          .limit(1)
-          .maybeSingle();
-        idVendedorReal = primerUser?.id_usuario;
-      }
-
-      if (!idVendedorReal) {
-        alert('No se encontró ningún usuario en la tabla "usuarios" para asignarle este producto.');
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('productos')
-        .insert([
-          {
-            id_vendedor: idVendedorReal,
-            id_categoria: idCategoriaReal,
-            nombre: nuevoProd.nombre,
-            descripcion: nuevoProd.definicion || nuevoProd.comentario || '',
-            precio: nuevoProd.precio,
-            cantidad_disponible: 10,
-            imagen_url: nuevoProd.imagen_url || nuevoProd.imagen,
-            estado: 'Aprobado'
-          }
-        ])
-        .select();
-
-      if (error) {
-        console.error('Error insertando en la BD:', error);
-        alert('No se pudo publicar el producto: ' + error.message);
-        return;
-      }
-
-      // 5. Reflejar en la vista de la app al instante
-      const productoGuardado = data?.[0] || {};
-      const nuevoProductoCompleto = {
-        ...nuevoProd,
-        id: productoGuardado.id_producto || Date.now(),
-        id_producto: productoGuardado.id_producto || Date.now(),
-        id_vendedor: idVendedorReal,
-        categoria: nuevoProd.categoria,
-        imagen_url: nuevoProd.imagen_url || nuevoProd.imagen,
-        esMio: true
-      };
-
-      setProductosCatalogo((prev) => [nuevoProductoCompleto, ...prev]);
-      alert('Producto publicado correctamente.');
-    } catch (err) {
-      console.error('Error inesperado:', err);
-      alert('Ocurrió un error inesperado al registrar el producto.');
-    }
+  const guardarProductoAPI = async (ruta, metodo, datos) => {
+    const token = localStorage.getItem('campy_token') || tokenAuth;
+    if (!token) throw new Error('Vuelve a iniciar sesión.');
+    const respuesta = await fetch(`${API_URL}/api/productos${ruta}`, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(datos)
+    });
+    const resultado = await respuesta.json().catch(() => ({}));
+    if (!respuesta.ok) throw new Error(resultado.mensaje || 'No se pudo guardar el producto.');
+    setRecargaCatalogo(n => n + 1);
+    return resultado;
   };
 
-  const editarProducto = async (idProducto, datosActualizados) => {
-    setProductosCatalogo((prev) =>
-      prev.map((prod) => (prod.id === idProducto ? { ...prod, ...datosActualizados } : prod))
-    );
-  };
+  const agregarNuevoProducto = (nuevoProd) => guardarProductoAPI('', 'POST', {
+    nombre: nuevoProd.nombre,
+    descripcion: nuevoProd.definicion || nuevoProd.comentario || '',
+    precio: nuevoProd.precio,
+    categoria: nuevoProd.categoria,
+    imagen_url: nuevoProd.imagen_url || '',
+    claveCreacion: nuevoProd.claveCreacion
+  });
+
+  const editarProducto = (id, cambios) => guardarProductoAPI(`/${id}`, 'PATCH', {
+    nombre: cambios.nombre,
+    descripcion: cambios.definicion || cambios.comentario || '',
+    precio: cambios.precio,
+    categoria: cambios.categoria,
+    imagen_url: cambios.imagen_url || ''
+  });
 
   const eliminarProducto = async (idProducto) => {
     const token = localStorage.getItem('campy_token') || tokenAuth;
@@ -534,6 +476,12 @@ function App() {
     return resultado;
   };
 
+  const liberarReparto = async (pedidoId, motivo) => {
+    const resultado = await solicitarRepartoAPI(`/${pedidoId}/liberar`, 'POST', { motivo });
+    refrescarPedidos();
+    return resultado;
+  };
+
   const confirmarRecepcionPedido = async (pedidoId) => {
     const token = localStorage.getItem('campy_token') || tokenAuth;
     if (!token) throw new Error('Tu sesión ha caducado. Inicia sesión nuevamente.');
@@ -607,6 +555,7 @@ function App() {
           solicitudVendedor={solicitudVendedor}
           irAPanelModerador={() => setPantallaActual('moderador')}
           registrarComoRepartidor={registrarComoRepartidor}
+          token={tokenAuth}
           irAPanelVendedor={() => setPantallaActual('vendedor')}
           irAPanelRepartidor={() => setPantallaActual('repartidor')}
           irAInicio={() => setPantallaActual('home')}
@@ -648,7 +597,7 @@ function App() {
       )}
 
 
-      {pantallaActual === 'vendedor' && (
+      {pantallaActual === 'vendedor' && usuarioActual.esVendedor && (
         <PanelVendedor
           usuario={usuarioActual}
           actualizarDatosVendedor={(nuevosDatos) =>
@@ -667,6 +616,7 @@ function App() {
           refrescarPedidos={refrescarPedidos}
           configurarAceptacionPedido={configurarAceptacionPedido}
           cambiarEstadoPedidoVendedor={cambiarEstadoPedidoVendedor}
+          liberarReparto={liberarReparto}
           volverAModoCliente={() => setPantallaActual('home')}
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');
@@ -680,7 +630,7 @@ function App() {
         />
       )}
 
-      {pantallaActual === 'repartidor' && (
+      {pantallaActual === 'repartidor' && usuarioActual.esRepartidor && (
         <PanelRepartidor
           usuario={usuarioActual}
           pedidos={pedidosRepartidor}

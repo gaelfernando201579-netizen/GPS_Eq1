@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
 import NavegacionComprador from './NavegacionComprador.jsx';
+import { EDIFICIOS_ITO } from './ubicacionesITO.js';
 
 import FormularioTarjetaDemo from './FormularioTarjetaDemo.jsx';
 import {
@@ -11,7 +12,7 @@ import {
 
 
 const DIAS_SEMANA = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
-const BLOQUES_HORA = ['08-10', '10-12', '12-14', '14-16', '16-18'];
+const BLOQUES_HORA = Array.from({length:11},(_,i)=>`${String(i+7).padStart(2,'0')}-${String(i+8).padStart(2,'0')}`);
 
 const MiPerfil = ({
   usuario,
@@ -20,6 +21,7 @@ const MiPerfil = ({
   solicitudVendedor,
   irAPanelModerador,
   registrarComoRepartidor,
+  token,
   irAPanelVendedor,
   irAPanelRepartidor,
   irAInicio,
@@ -27,6 +29,27 @@ const MiPerfil = ({
   cerrarSesion
 }) => {
   const [modalActivo, setModalActivo] = useState(null);
+  const [solicitudRepartidor, setSolicitudRepartidor] = useState(null);
+  const [errorRepartidor, setErrorRepartidor] = useState('');
+  React.useEffect(() => {
+    if (!token) return;
+    let activo=true;
+    const consultar=async()=>{
+      try {
+        const r=await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/solicitudes-repartidor/mia`,{
+          headers:{Authorization:`Bearer ${token}`}
+        });
+        const data=await r.json().catch(()=>({}));
+        if(r.ok&&activo){
+          setSolicitudRepartidor(data.solicitud);
+          if(data.esRepartidor)setUsuario(prev=>prev.esRepartidor?prev:({...prev,esRepartidor:true}));
+        }
+      }catch(_){ }
+    };
+    consultar();
+    const i=setInterval(consultar,15000);
+    return()=>{activo=false;clearInterval(i);};
+  },[token]);
 
   const claveDirecciones = `campy_direcciones_${usuario?.id_usuario ?? usuario?.correo ?? 'invitado'}`;
 
@@ -120,7 +143,7 @@ React.useEffect(() => {
 
 
   // Estados para editar perfil básico de comprador
-  const [nombreEdit, setNombreEdit] = useState(usuario?.nombre || 'Cintia Yadai Salinas Montesinos');
+  const [nombreEdit, setNombreEdit] = useState(usuario?.nombre || '');
   const [carreraEdit, setCarreraEdit] = useState(usuario?.carrera || 'Ing. Sistemas Computacionales');
   const [telefonoEdit, setTelefonoEdit] = useState(usuario?.telefono || '');
 
@@ -129,7 +152,7 @@ React.useEffect(() => {
   const [nombreVendedor, setNombreVendedor] = useState(usuario?.datosVendedor?.nombre || usuario?.nombre || '');
   const [giroVenta, setGiroVenta] = useState(usuario?.datosVendedor?.queVende || '');
   const [ubicacionBase, setUbicacionBase] = useState(usuario?.datosVendedor?.ubicacion || 'Edificio L');
-  const [matrizHorario, setMatrizHorario] = useState(usuario?.datosVendedor?.matrizHorario || { LUN_10_12: true, MIE_10_12: true, VIE_10_12: true });
+  const [matrizHorario, setMatrizHorario] = useState(usuario?.datosVendedor?.matrizHorario || {});
   const [notaHorario, setNotaHorario] = useState(usuario?.datosVendedor?.notaHorario || '');
   const [errorHorario, setErrorHorario] = useState('');
   const [errorSolicitud, setErrorSolicitud] = useState('');
@@ -212,13 +235,16 @@ React.useEffect(() => {
 
   const manejarAltaRepartidor = async (e) => {
     e.preventDefault();
-    await registrarComoRepartidor({
-      identificacion: idControlRep.trim(),
-      nombre: nombreRep.trim(),
-      medio: medioRep,
-      zonas: zonasRep.trim()
-    });
-    setModalActivo(null);
+    setErrorRepartidor('');
+    try {
+      const r=await registrarComoRepartidor({
+        identificacion: idControlRep.trim(),
+        nombre: nombreRep.trim(),
+        zonas: zonasRep.trim()
+      });
+      setSolicitudRepartidor(r.solicitud);
+      setModalActivo(null);
+    } catch(error){ setErrorRepartidor(error.message || 'No se pudo enviar la solicitud.'); }
   };
 
   return (
@@ -359,6 +385,18 @@ React.useEffect(() => {
 
           {/* APARTADO 2: MODO REPARTIDOR (ESTILO UBER CAMPUS) */}
           {!usuario?.esRepartidor ? (
+            solicitudRepartidor?.estado === 'Pendiente' ? (
+              <div className="rounded-3xl bg-amber-50 border border-amber-200 p-5 mb-5 text-sm">
+                <h4 className="font-black text-amber-900">Solicitud de repartidor pendiente</h4>
+                <p className="text-amber-800 mt-2">El moderador debe aprobar tu alta antes de recibir pedidos.</p>
+              </div>
+            ) : solicitudRepartidor?.estado === 'Rechazada' ? (
+              <div className="rounded-3xl bg-red-50 border border-red-200 p-5 mb-5 text-sm">
+                <h4 className="font-black text-red-800">Solicitud de repartidor rechazada</h4>
+                <p className="mt-2 text-gray-700">{solicitudRepartidor.comentario_revision || 'Puedes enviar una nueva solicitud.'}</p>
+                <button onClick={()=>setModalActivo('altaRepartidor')} className="bg-[#0A3895] text-white rounded-xl py-3 px-4 mt-3 font-bold">Solicitar nuevamente</button>
+              </div>
+            ) : (
             <div className="bg-gradient-to-r from-[#15803d] to-[#22C55E] rounded-3xl p-5 text-white shadow-lg mb-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -379,6 +417,7 @@ React.useEffect(() => {
                 Darme de alta como repartidor
               </button>
             </div>
+            )
           ) : (
             <div className="bg-white rounded-3xl p-5 shadow-sm border-2 border-[#22C55E] mb-5">
               <span className="bg-green-100 text-green-700 text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full">
@@ -467,6 +506,7 @@ React.useEffect(() => {
                     value={ubicacionBase}
                     onChange={(e) => setUbicacionBase(e.target.value)}
                     placeholder="Ej. Edificio L"
+                    list="edificios-vendedor-ito"
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 outline-none focus:border-[#0A3895]"
                     required
                   />
@@ -516,6 +556,8 @@ React.useEffect(() => {
                   ))}
                 </div>
 
+                <datalist id="edificios-vendedor-ito">{EDIFICIOS_ITO.map(l=><option key={l} value={l}/>)}</datalist>
+                <p className="text-[10px] text-[#0A3895] font-bold mt-2">Vista previa: {formatearResumenHorario(matrizHorario)}</p>
                 <div className="mt-2 flex items-center gap-2 bg-white px-2.5 py-1.5 rounded-xl border border-gray-200">
                   <span className="text-[9px] font-black text-[#0A3895] uppercase shrink-0">NOTAS:</span>
                   <input
@@ -579,19 +621,6 @@ React.useEffect(() => {
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-gray-600 block mb-1">Modalidad de entrega en campus</label>
-                <select
-                  value={medioRep}
-                  onChange={(e) => setMedioRep(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm text-gray-800 outline-none focus:border-[#22C55E]"
-                >
-                  <option value="A pie (Dentro del Campus ITO)">A pie (Dentro del Campus ITO)</option>
-                  <option value="Bicicleta / Patín">Bicicleta / Patín</option>
-                  <option value="Motocicleta (Accesos y Alrededores)">Motocicleta (Accesos y Alrededores)</option>
-                </select>
-              </div>
-
-              <div>
                 <label className="text-[11px] font-bold text-gray-600 block mb-1">Edificios o Zonas que cubres</label>
                 <input
                   type="text"
@@ -603,11 +632,12 @@ React.useEffect(() => {
                 />
               </div>
 
+              {errorRepartidor && <p className="text-xs text-red-700">{errorRepartidor}</p>}
               <button
                 type="submit"
                 className="w-full bg-[#22C55E] hover:bg-[#16a34a] text-white font-black text-xs uppercase tracking-wider py-4 rounded-xl shadow-lg mt-2 active:scale-95 transition-transform"
               >
-                Abrir Menú de Repartidor ➔
+                Enviar solicitud al moderador ➔
               </button>
             </form>
           </div>
@@ -873,6 +903,7 @@ React.useEffect(() => {
                   value={nombreDireccion}
                   onChange={(e) => setNombreDireccion(e.target.value)}
                   placeholder="Ej. Edificio K - Salón K2"
+                  list="edificios-direccion-ito"
                   maxLength={100}
                   className="w-full p-3 rounded-xl border border-gray-200 text-sm"
                 />
@@ -886,6 +917,7 @@ React.useEffect(() => {
                   className="w-full p-3 rounded-xl border border-gray-200 text-sm"
                 />
 
+                <datalist id="edificios-direccion-ito">{EDIFICIOS_ITO.map(l=><option key={l} value={l}/>)}</datalist>
                 <button
                   type="button"
                   onClick={agregarDireccion}

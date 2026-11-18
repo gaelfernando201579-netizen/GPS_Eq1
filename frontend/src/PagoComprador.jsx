@@ -276,6 +276,11 @@ export default function PagoComprador({
 
               <p>
                 CLABE: <strong>{BANCO.clabe}</strong>
+                <button type="button" className="ml-2 rounded-lg bg-blue-100 text-blue-800 px-2 py-1 text-[10px] font-bold"
+                  onClick={async () => {
+                    try { await navigator.clipboard.writeText(BANCO.clabe); setMensaje('Número de transferencia copiado.'); }
+                    catch { setMensaje('Selecciona el número para copiarlo.'); }
+                  }}>Copiar</button>
               </p>
 
               <p>

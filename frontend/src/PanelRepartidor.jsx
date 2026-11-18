@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import logoCampy from './assets/logo.png';
+import ComentarioEntrega from './ComentarioEntrega.jsx';
 
 const PanelRepartidor = ({
   usuario,
@@ -112,6 +113,11 @@ const PanelRepartidor = ({
               </div>
             </div>
           </div>
+
+          <button type="button" onClick={volverAModoCliente}
+            className="w-full bg-[#0A3895] text-white font-black rounded-2xl py-3.5 mb-5 shadow-lg border-2 border-white text-xs">
+            🛒 Regresar al catálogo de comprador
+          </button>
 
           {/* ================= PESTAÑA 1: BOLSA DE PEDIDOS DISPONIBLES (ESTILO UBER) ================= */}
           {tabActiva === 'disponibles' && (
@@ -258,19 +264,26 @@ const PanelRepartidor = ({
                           <p>💵 <span className="font-bold text-gray-700">Costo del producto:</span> <span className="font-black">${Number(ped.costoProductoRepartidor || ped.total).toFixed(2)}</span></p>
                         </div>
 
+                        {!entregado && ped.estado !== 'Cancelado' && (
+                          <div className="mb-3">
+                            <ComentarioEntrega pedidoId={ped.id} comentarioInicial={ped.comentarioEntregaRepartidor}
+                              otros={[{nombre:'Comprador',texto:ped.comentarioEntregaComprador},{nombre:'Vendedor',texto:ped.comentarioEntregaVendedor}]}
+                              onGuardado={actualizar}/>
+                          </div>
+                        )}
                         {!entregado ? (
                           <div className="flex flex-col gap-2">
                             <p className="text-[10px] font-bold text-gray-600">Etapa: {ped.estadoReparto}</p>
                             {ped.estadoReparto === 'Repartidor llegó' && (
                               <button type="button" onClick={() => avanzar(ped.id, 'Recibí pedido')}
                                 className="w-full bg-[#0A3895] text-white font-bold py-3 rounded-xl">
-                                Recibí el pedido
+                                Recibí el pedido (aún no salgo)
                               </button>
                             )}
                             {ped.estadoReparto === 'Recibido' && (
                               <button type="button" onClick={() => avanzar(ped.id, 'En camino')}
                                 className="w-full bg-[#FF8C00] text-white font-bold py-3 rounded-xl">
-                                En camino
+                                Confirmar: voy en camino
                               </button>
                             )}
                             {ped.estadoReparto === 'En camino' && (

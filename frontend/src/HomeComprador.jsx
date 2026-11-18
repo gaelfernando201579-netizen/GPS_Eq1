@@ -11,6 +11,8 @@ import imgTecnologia from './assets/tecnologia.png';
 import imgSabritas from './assets/sabritas.png';
 import imgDulces from './assets/dulces.png';
 import imgCarrito from './assets/carrito.png';
+import { EDIFICIOS_ITO } from './ubicacionesITO.js';
+import { obtenerTarjetas } from './tarjetasDemo.js';
 
 const HomeComprador = ({
   productos = [],
@@ -29,11 +31,18 @@ const HomeComprador = ({
   const [checkoutAbierto, setCheckoutAbierto] = useState(false);
   const [carritoAbierto, setCarritoAbierto] = useState(false);
   const [puntoEntrega, setPuntoEntrega] = useState('');
+  const [metodoPago, setMetodoPago] = useState('');
+  const [tarjetasCheckout, setTarjetasCheckout] = useState([]);
+  const [tarjetaCheckout, setTarjetaCheckout] = useState('');
 
   const [direccionesGuardadas, setDireccionesGuardadas] = useState([]);
 
   useEffect(() => {
     if (!checkoutAbierto) return;
+    obtenerTarjetas().then(lista => {
+      setTarjetasCheckout(Array.isArray(lista) ? lista : []);
+      setTarjetaCheckout(String(lista?.find(t=>t.predeterminada)?.id || lista?.[0]?.id || ''));
+    }).catch(() => { setTarjetasCheckout([]); setTarjetaCheckout(''); });
 
     const clave = `campy_direcciones_${usuarioId ?? 'invitado'}`;
 
@@ -191,6 +200,10 @@ const HomeComprador = ({
       return;
     }
 
+    if (!metodoPago) { setErrorPedido('Selecciona el método de pago.'); return; }
+    if (metodoPago === 'tarjeta' && !tarjetaCheckout) {
+      setErrorPedido('Primero guarda y selecciona una tarjeta de prueba en Mi cuenta.'); return;
+    }
     setErrorPedido('');
 
     const itemsComprados = Object.entries(carrito)
@@ -213,7 +226,9 @@ const HomeComprador = ({
     try {
       await irAPedidos(itemsComprados, {
         puntoEntrega: puntoEntrega.trim(),
-        horarioEntrega: new Date(horarioEntrega).toISOString()
+        horarioEntrega: new Date(horarioEntrega).toISOString(),
+        metodoPago,
+        idTarjeta: metodoPago === 'tarjeta' ? tarjetaCheckout : null
       });
 
       setCheckoutAbierto(false);
@@ -650,8 +665,10 @@ const HomeComprador = ({
                   minLength={5}
                   required
                   placeholder="O escribe otro punto de entrega"
+                  list="edificios-compra-ito"
                   className="w-full mt-2 border border-gray-200 rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-orange-400"
                 />
+                <datalist id="edificios-compra-ito">{EDIFICIOS_ITO.map(l => <option key={l} value={l} />)}</datalist>
               </div>
 
               <label className="block text-xs font-bold text-gray-700">
@@ -676,6 +693,31 @@ const HomeComprador = ({
                   Horario: 7:00 a. m. a 6:00 p. m. (máximo 30 días).
                 </span>
               </label>
+
+              <fieldset className="rounded-2xl border border-blue-100 bg-[#F4F7FD] p-3 space-y-2">
+                <legend className="text-xs font-black text-[#0A3895] px-1">Método de pago</legend>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[['efectivo','Efectivo'],['transferencia','Transferencia'],['tarjeta','Tarjeta']].map(([clave,nombre]) => (
+                    <button key={clave} type="button" aria-pressed={metodoPago===clave}
+                      onClick={() => setMetodoPago(clave)}
+                      className={`rounded-xl p-2 text-[11px] font-bold border ${metodoPago===clave?'bg-[#0A3895] text-white border-[#0A3895]':'bg-white text-gray-700 border-gray-200'}`}>
+                      {nombre}
+                    </button>
+                  ))}
+                </div>
+                {metodoPago==='tarjeta' && (
+                  <div>
+                    <label className="text-xs text-gray-700">Tarjeta de prueba guardada</label>
+                    <select value={tarjetaCheckout} onChange={e=>setTarjetaCheckout(e.target.value)}
+                      className="w-full bg-white rounded-lg border border-gray-200 p-2 mt-1 text-xs">
+                      <option value="">Seleccionar tarjeta</option>
+                      {tarjetasCheckout.map(t=><option key={t.id} value={t.id}>{t.marca} ···· {t.ultimos4}</option>)}
+                    </select>
+                    {!tarjetasCheckout.length && <p className="text-red-600 text-xs mt-1">Agrega una tarjeta de prueba desde Mi cuenta.</p>}
+                  </div>
+                )}
+                <p className="text-[10px] text-gray-500">Elegir un método no realiza ningún cobro automático.</p>
+              </fieldset>
 
               <p className="text-xs text-gray-500">
                 El envío del pedido no realiza ningún cobro.
@@ -712,11 +754,11 @@ const HomeComprador = ({
               onClick={() => setProductoSeleccionado(null)}
             ></div>
 
-            <div className="bg-white w-full rounded-t-[30px] p-6 pb-8 relative z-10 animate-[slideUp_0.3s_ease-out]">
+            <div className="bg-white w-full rounded-t-[30px] p-6 pb-8 relative z-10 animate-[slideUp_0.3s_ease-out] shadow-2xl max-h-[88%] overflow-y-auto">
               <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6"></div>
 
               <div className="flex gap-4 items-center mb-6">
-                <div className="w-20 h-20 bg-gray-200 rounded-xl flex items-center justify-center text-gray-400 text-xs font-bold shrink-0 overflow-hidden">
+                <div className="w-24 h-24 bg-orange-50 rounded-2xl flex items-center justify-center text-gray-400 text-xs font-bold shrink-0 overflow-hidden border border-orange-100 shadow-sm">
                   {productoSeleccionado.imagen_url ? (
                     <img
                       src={productoSeleccionado.imagen_url}
@@ -727,7 +769,7 @@ const HomeComprador = ({
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-lg font-black text-gray-900 leading-tight truncate">
+                  <h2 className="text-lg font-black text-gray-900 leading-tight break-words">
                     {productoSeleccionado.nombre}
                   </h2>
                   <p className="text-[#FF8C00] font-black text-xl mt-1">
@@ -761,6 +803,12 @@ const HomeComprador = ({
                 </div>
               </div>
 
+              {productoSeleccionado.descripcion && (
+                <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-4 mb-3">
+                  <p className="text-[10px] font-black uppercase text-orange-600 mb-1">Descripción</p>
+                  <p className="text-xs leading-relaxed text-gray-700">{productoSeleccionado.descripcion}</p>
+                </div>
+              )}
               <button
                 onClick={() => {
                   manejarCantidad(
