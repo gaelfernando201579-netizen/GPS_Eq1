@@ -28,6 +28,48 @@ const HomeComprador = ({
 }) => {
   const [categoriaActiva, setCategoriaActiva] = useState('Todo');
   const [productoSeleccionado, setProductoSeleccionado] = useState(null);
+  const [resenasProducto, setResenasProducto] = useState([]);
+  const [cargandoResenas, setCargandoResenas] = useState(false);
+  const [errorResenas, setErrorResenas] = useState('');
+  const [mostrarTodasResenas, setMostrarTodasResenas] = useState(false);
+  // Consultar reseñas de Supabase mediante la API cuando se abre una vista previa.
+  useEffect(() => {
+    if (!productoSeleccionado) return;
+
+    const idProducto = Number(productoSeleccionado.id);
+    const controlador = new AbortController();
+    setResenasProducto([]);
+    setMostrarTodasResenas(false);
+    setErrorResenas('');
+    setCargandoResenas(true);
+
+    if (!Number.isSafeInteger(idProducto) || idProducto <= 0) {
+      setErrorResenas('No se pudo identificar el producto.');
+      setCargandoResenas(false);
+      return () => controlador.abort();
+    }
+
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    fetch(`${API_URL}/api/productos/${idProducto}/resenas`, { signal: controlador.signal })
+      .then(async (respuesta) => {
+        const datos = await respuesta.json().catch(() => null);
+        if (!respuesta.ok) throw new Error(datos?.mensaje || 'No se pudieron cargar las reseñas.');
+        if (!Array.isArray(datos)) throw new Error('Respuesta de reseñas inválida.');
+        return datos;
+      })
+      .then((datos) => setResenasProducto(datos))
+      .catch((error) => {
+        if (error.name !== 'AbortError') {
+          setErrorResenas(error.message || 'No se pudieron cargar las reseñas.');
+        }
+      })
+      .finally(() => {
+        if (!controlador.signal.aborted) setCargandoResenas(false);
+      });
+
+    return () => controlador.abort();
+  }, [productoSeleccionado?.id]);
+
   const [checkoutAbierto, setCheckoutAbierto] = useState(false);
   const [carritoAbierto, setCarritoAbierto] = useState(false);
   const [puntoEntrega, setPuntoEntrega] = useState('');
@@ -176,8 +218,8 @@ const HomeComprador = ({
     const minutos =
       fecha.getHours() * 60 + fecha.getMinutes();
 
-    if (minutos < 7 * 60 || minutos > 18 * 60) {
-      return 'Solo puedes elegir horarios de entrega entre las 7:00 a. m. y las 6:00 p. m.';
+    if (minutos < 7 * 60 || minutos > 20 * 60) {
+      return 'Solo puedes elegir horarios de entrega entre las 7:00 a. m. y las 8:00 p. m.';
     }
 
     return '';
@@ -690,7 +732,7 @@ const HomeComprador = ({
 
                 <span className="block mt-1 text-[11px] text-gray-500">
                   Puedes elegir hoy si la hora aún no ha pasado.
-                  Horario: 7:00 a. m. a 6:00 p. m. (máximo 30 días).
+                  Horario: 7:00 a. m. a 8:00 p. m. (máximo 30 días).
                 </span>
               </label>
 
@@ -746,82 +788,241 @@ const HomeComprador = ({
           </div>
         )}
 
-        {/* MODAL DEL PRODUCTO SELECCIONADO */}
+        {/* VISTA PREVIA DEL PRODUCTO: diseño premium, lógica del carrito intacta */}
         {productoSeleccionado && (
           <div className="absolute inset-0 z-[50] flex items-end justify-center">
-            <div
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            <button
+              type="button"
+              className="absolute inset-0 h-full w-full cursor-default bg-[#06132B]/75 backdrop-blur-[5px]"
               onClick={() => setProductoSeleccionado(null)}
-            ></div>
+              aria-label="Cerrar vista previa del producto"
+            />
 
-            <div className="bg-white w-full rounded-t-[30px] p-6 pb-8 relative z-10 animate-[slideUp_0.3s_ease-out] shadow-2xl max-h-[88%] overflow-y-auto">
-              <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-6"></div>
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Vista previa de ${productoSeleccionado.nombre}`}
+              className="relative z-10 flex max-h-[94%] w-full flex-col overflow-hidden rounded-t-[36px] bg-[#F8FAFD] shadow-[0_-20px_75px_rgba(0,0,0,0.35)]"
+            >
+              <div className="absolute left-1/2 top-2.5 z-20 h-1.5 w-11 -translate-x-1/2 rounded-full bg-white/75 shadow-sm" />
 
-              <div className="flex gap-4 items-center mb-6">
-                <div className="w-24 h-24 bg-orange-50 rounded-2xl flex items-center justify-center text-gray-400 text-xs font-bold shrink-0 overflow-hidden border border-orange-100 shadow-sm">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain hide-scrollbar">
+                {/* Foto hero y detalles superpuestos */}
+                <div className="relative h-[295px] w-full overflow-hidden bg-[#DCE5F1] sm:h-[325px]">
                   {productoSeleccionado.imagen_url ? (
                     <img
                       src={productoSeleccionado.imagen_url}
                       alt={productoSeleccionado.nombre}
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover"
                     />
-                  ) : 'IMG'}
-                </div>
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-gradient-to-br from-[#D9E6FA] via-white to-[#FFE1BE] text-[#0A3895]">
+                      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <rect x="3" y="3" width="18" height="18" rx="3" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <path d="m3 17 5-5 4 4 3-3 6 6" />
+                      </svg>
+                      <span className="text-xs font-semibold tracking-wide">Fotografía no disponible</span>
+                    </div>
+                  )}
 
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-lg font-black text-gray-900 leading-tight break-words">
-                    {productoSeleccionado.nombre}
-                  </h2>
-                  <p className="text-[#FF8C00] font-black text-xl mt-1">
-                    ${productoSeleccionado.precio}
-                  </p>
-                </div>
-              </div>
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#07172D]/75 via-[#07172D]/25 to-transparent" />
 
-              <div className="bg-[#F4F7FD] rounded-2xl p-4 mb-4 border border-blue-50">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-blue-500 text-sm">👤</span>
-                  <span className="font-bold text-sm text-gray-800 truncate">
-                    {productoSeleccionado.tienda}
-                  </span>
+                  <button
+                    type="button"
+                    aria-label="Cerrar vista previa"
+                    onClick={() => setProductoSeleccionado(null)}
+                    className="absolute right-4 top-5 flex h-10 w-10 items-center justify-center rounded-full border border-white/70 bg-white/95 text-[#14233D] shadow-lg transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[#FF8C00]"
+                  >
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
 
-                  {Number(productoSeleccionado.num_resenas) > 0 && productoSeleccionado.calificacion != null && (
-                    <span className="text-[10px] font-bold text-gray-600 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full ml-auto whitespace-nowrap" title="Promedio de calificaciones de pedidos que incluyen este producto">
-                      ⭐ {Number(productoSeleccionado.calificacion).toFixed(1)}
-                      ({productoSeleccionado.num_resenas})
+                  {productoSeleccionado.categoria && (
+                    <span className="absolute left-5 top-6 max-w-[65%] truncate rounded-full border border-white/70 bg-white/95 px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-[#0A3895] shadow-md">
+                      {productoSeleccionado.categoria}
                     </span>
                   )}
+
+                  <div className="absolute bottom-6 left-5 right-5 flex items-end justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-200">Descubre tu antojo</p>
+                      <h2 className="break-words text-[26px] font-black leading-[1.08] text-white drop-shadow-sm">
+                        {productoSeleccionado.nombre}
+                      </h2>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-start gap-2">
-                  <span className="text-red-500 text-sm mt-0.5">
-                    📍
-                  </span>
-                  <span className="text-xs text-gray-500 font-medium">
-                    {productoSeleccionado.ubicacion}
-                  </span>
+                {/* Precio y valoración */}
+                <div className="relative -mt-3 rounded-t-[28px] bg-[#F8FAFD] px-5 pt-5 pb-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.17em] text-slate-400">Precio por unidad</p>
+                      <p className="mt-0.5 text-[34px] font-black leading-none tracking-tight text-[#F07C00]">
+                        ${Number(productoSeleccionado.precio || 0).toFixed(2)}
+                      </p>
+                    </div>
+                    {Number(productoSeleccionado.num_resenas) > 0 && productoSeleccionado.calificacion != null ? (
+                      <div className="flex items-center gap-1.5 rounded-2xl border border-amber-100 bg-[#FFF3DE] px-3 py-2.5 text-[#93530A]" title="Calificación de compradores">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.9L12 17.8l-6.2 3.3L7 14.2 2 9.3l6.9-1L12 2Z" /></svg>
+                        <div className="leading-tight">
+                          <p className="text-sm font-black">{Number(productoSeleccionado.calificacion).toFixed(1)}</p>
+                          <p className="text-[9px] font-medium">{productoSeleccionado.num_resenas} reseñas</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl bg-[#EAF1FF] px-3 py-2 text-[10px] font-bold text-[#0A3895]">
+                        Hecho para tu antojo
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="my-5 h-px bg-slate-200/80" />
+
+                  {/* Vendedor y ubicación reales */}
+                  <div className="rounded-[22px] border border-[#E4EAF5] bg-white p-4 shadow-[0_5px_22px_rgba(10,56,149,0.04)]">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#EAF0FF] text-[#0A3895]">
+                        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M3 10h18l-2-6H5l-2 6ZM4 10v10h16V10M9 20v-6h6v6M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Lo prepara / vende</p>
+                        <p className="mt-0.5 break-words text-sm font-black text-[#102C5F]">{productoSeleccionado.tienda || 'Vendedor CAMPY'}</p>
+                      </div>
+                    </div>
+                    {productoSeleccionado.ubicacion && (
+                      <div className="mt-3 flex items-start gap-2.5 border-t border-slate-100 pt-3">
+                        <svg className="mt-0.5 shrink-0 text-[#F07C00]" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" />
+                        </svg>
+                        <p className="break-words text-xs font-medium leading-relaxed text-slate-600">{productoSeleccionado.ubicacion}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {productoSeleccionado.descripcion && (
+                    <section className="mt-5" aria-label="Descripción del producto">
+                      <h3 className="flex items-center gap-2 text-sm font-black text-[#102C5F]">
+                        <span className="h-5 w-1 rounded-full bg-[#FF8C00]" />
+                        ¿Qué incluye este producto?
+                      </h3>
+                      <p className="mt-2 whitespace-pre-line break-words text-[13px] leading-[1.8] text-slate-600">
+                        {productoSeleccionado.descripcion}
+                      </p>
+                    </section>
+                  )}
+
+
+                  {/* Reseñas publicadas en Supabase para este producto */}
+                  <section className="mt-6" aria-label="Reseñas del producto">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="h-5 w-1 rounded-full bg-[#FF8C00]" />
+                        <h3 className="text-sm font-black text-[#102C5F]">Reseñas de pedidos con este producto</h3>
+                      </div>
+                      {!cargandoResenas && !errorResenas && resenasProducto.length > 0 && (
+                        <span className="rounded-full bg-[#EEF3FC] px-2.5 py-1 text-[10px] font-bold text-[#0A3895]">
+                          {resenasProducto.length} {resenasProducto.length === 1 ? 'opinión' : 'opiniones'}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="mb-3 text-[11px] leading-relaxed text-slate-500">Estas calificaciones corresponden a pedidos que incluyeron este producto y pueden valorar la compra completa.</p>
+
+                    {cargandoResenas ? (
+                      <div className="rounded-2xl border border-slate-200 bg-white p-4 text-center text-xs text-slate-500" role="status">
+                        Cargando opiniones reales...
+                      </div>
+                    ) : errorResenas ? (
+                      <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-xs text-red-700" role="alert">
+                        {errorResenas}
+                      </div>
+                    ) : resenasProducto.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-5 text-center">
+                        <p className="text-sm font-bold text-[#102C5F]">Aún no hay reseñas</p>
+                        <p className="mt-1 text-xs text-slate-500">Todavía no hay pedidos calificados que incluyan este producto.</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mb-3 flex items-center gap-3 rounded-2xl border border-amber-100 bg-[#FFF9ED] p-3">
+                          <span className="text-3xl font-black text-[#A65B0A]">
+                            {(resenasProducto.reduce((suma, item) => suma + Number(item.estrellas || 0), 0) / resenasProducto.length).toFixed(1)}
+                          </span>
+                          <div>
+                            <p className="text-sm tracking-[2px] text-amber-500" aria-label="Calificación de cinco estrellas">★★★★★</p>
+                            <p className="text-[11px] text-slate-600">Promedio de las reseñas mostradas</p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          {(mostrarTodasResenas ? resenasProducto : resenasProducto.slice(0, 3)).map((resena) => (
+                            <article key={resena.id_calificacion} className="rounded-[20px] border border-[#E5EAF2] bg-white p-4 shadow-sm">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex min-w-0 items-center gap-2.5">
+                                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EAF0FF] text-xs font-black text-[#0A3895]">
+                                    {String(resena.comprador || 'C').slice(0, 1).toUpperCase()}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs font-black text-[#102C5F]">{resena.comprador || 'Comprador'}</p>
+                                    <p className="text-[10px] text-slate-400">
+                                      {resena.fecha_calificacion && !Number.isNaN(new Date(resena.fecha_calificacion).getTime())
+                                        ? new Date(resena.fecha_calificacion).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
+                                        : 'Compra calificada'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="shrink-0 text-[12px] tracking-[1px] text-amber-500" aria-label={`${resena.estrellas} de 5 estrellas`}>
+                                  {'★'.repeat(Math.max(0, Math.min(5, Number(resena.estrellas) || 0)))}
+                                  <span className="text-slate-200">{'★'.repeat(5 - Math.max(0, Math.min(5, Number(resena.estrellas) || 0)))}</span>
+                                </span>
+                              </div>
+                              <p className="mt-3 whitespace-pre-line break-words text-xs leading-relaxed text-slate-600">
+                                {String(resena.comentario || '').trim() || 'El comprador calificó su experiencia sin dejar un comentario.'}
+                              </p>
+                            </article>
+                          ))}
+                        </div>
+
+                        {resenasProducto.length > 3 && (
+                          <button
+                            type="button"
+                            onClick={() => setMostrarTodasResenas((actual) => !actual)}
+                            className="mt-3 w-full rounded-xl border border-[#C9D8F2] bg-white py-3 text-xs font-black text-[#0A3895] transition-colors hover:bg-blue-50"
+                          >
+                            {mostrarTodasResenas ? 'Mostrar menos opiniones' : `Ver más opiniones (${resenasProducto.length})`}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </section>
                 </div>
               </div>
 
-              {productoSeleccionado.descripcion && (
-                <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-4 mb-3">
-                  <p className="text-[10px] font-black uppercase text-orange-600 mb-1">Descripción</p>
-                  <p className="text-xs leading-relaxed text-gray-700">{productoSeleccionado.descripcion}</p>
-                </div>
-              )}
-              <button
-                onClick={() => {
-                  manejarCantidad(
-                    { stopPropagation: () => {} },
-                    productoSeleccionado.id,
-                    1
-                  );
-                  setProductoSeleccionado(null);
-                }}
-                className="w-full bg-[#0A3895] hover:bg-[#082b75] text-white font-bold text-lg py-4 rounded-2xl shadow-lg mt-4 active:scale-95 transition-transform"
-              >
-                Agregar al carrito
-              </button>
+              {/* Acciones inferiores fijas: misma función de agregar al carrito */}
+              <div className="shrink-0 border-t border-[#E5EAF3] bg-white px-5 pt-3 pb-6 shadow-[0_-8px_32px_rgba(18,38,72,0.08)]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    manejarCantidad(
+                      { stopPropagation: () => {} },
+                      productoSeleccionado.id,
+                      1
+                    );
+                    setProductoSeleccionado(null);
+                  }}
+                  className="flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[#0A3895] to-[#1555B7] px-4 py-4 text-sm font-black text-white shadow-[0_8px_20px_rgba(10,56,149,0.25)] transition-transform hover:brightness-110 active:scale-[0.98]"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 4h2l2.2 11h11.4l2-8H6" /><circle cx="10" cy="20" r="1" /><circle cx="18" cy="20" r="1" /><path d="M13 8v6m-3-3h6" />
+                  </svg>
+                  Agregar al carrito
+                  <span className="ml-auto rounded-lg bg-white/15 px-2 py-1 text-[11px] font-bold">+1</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

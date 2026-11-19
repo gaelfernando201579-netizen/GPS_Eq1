@@ -15,6 +15,66 @@ const opcionesCarrera = [
   'Ingeniería en Sistemas Computacionales'
 ];
 
+const REQUISITOS_PASSWORD = [
+  { texto: 'Mínimo 8 caracteres', cumple: (valor) => valor.length >= 8 },
+  { texto: 'Máximo 10 caracteres', cumple: (valor) => valor.length <= 10 },
+  { texto: 'Una letra mayúscula', cumple: (valor) => /[A-Z]/.test(valor) },
+  { texto: 'Una letra minúscula', cumple: (valor) => /[a-z]/.test(valor) },
+  { texto: 'Un número', cumple: (valor) => /[0-9]/.test(valor) },
+  { texto: 'Un símbolo (por ejemplo: ! @ # $ %)', cumple: (valor) => /[^A-Za-z0-9\s]/.test(valor) },
+  { texto: 'Sin espacios', cumple: (valor) => !/\s/.test(valor) }
+];
+
+const passwordSegura = (valor) => REQUISITOS_PASSWORD.every((regla) => regla.cumple(valor));
+
+function ReglasPassword({ valor }) {
+  return (
+    <div className="bg-white/10 border border-white/25 rounded-2xl px-4 py-3 text-white" aria-label="Requisitos de contraseña">
+      <p className="text-xs font-bold mb-2">Tu contraseña debe cumplir con:</p>
+      <ul className="grid gap-1.5">
+        {REQUISITOS_PASSWORD.map((regla) => {
+          const cumple = valor.length > 0 && regla.cumple(valor);
+          return (
+            <li key={regla.texto} className={`flex items-center gap-2 text-[11px] ${cumple ? 'text-green-200' : 'text-white/80'}`}>
+              <span aria-hidden="true" className="font-black">{cumple ? '✓' : '○'}</span>
+              {regla.texto}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+
+const CLASE_ERROR_CAMPO = 'ring-2 ring-red-500 border-2 border-red-500 bg-red-50 focus:ring-red-500';
+const CLASE_ERROR_TEXTO = 'text-red-100 text-xs font-semibold px-3 -mt-2';
+
+function detectarCampoError(mensaje = '') {
+  const texto = String(mensaje).toLowerCase();
+  if (texto.includes('correo')) return 'correo';
+  if (texto.includes('teléfono') || texto.includes('telefono')) return 'telefono';
+  if (texto.includes('contraseña') || texto.includes('contrasena')) return 'password';
+  if (texto.includes('nombre')) return 'nombre';
+  return '';
+}
+
+function IconoOjo({ visible }) {
+  return visible ? (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 3l18 18" />
+      <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+      <path d="M9.9 5.1A10.5 10.5 0 0 1 12 5c5 0 9.3 4.2 10 7-.2 1.1-1.4 3-3 4.4" />
+      <path d="M6.6 6.6C4.4 8 2.6 10 2 12c.7 2.8 5 7 10 7 1.4 0 2.7-.3 4-.8" />
+    </svg>
+  ) : (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 const CampyLogin = ({ alIngresar }) => {
   const [modoRegistro, setModoRegistro] = useState(false);
   const [nombre, setNombre] = useState('');
@@ -22,10 +82,14 @@ const CampyLogin = ({ alIngresar }) => {
   const [selectorCarrerasAbierto, setSelectorCarrerasAbierto] = useState(false);
   const [verPassword, setVerPassword] = useState(false);
   const [telefono, setTelefono] = useState('');
+  const [confirmarTelefono, setConfirmarTelefono] = useState('');
   const [correo, setCorreo] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmarRegistro, setConfirmarRegistro] = useState('');
+  const [verConfirmarRegistro, setVerConfirmarRegistro] = useState(false);
 
   const [error, setError] = useState('');
+  const [erroresCampos, setErroresCampos] = useState({});
   const [cargando, setCargando] = useState(false);
 
   // Estados para el modal de recuperación estilo Google
@@ -42,20 +106,63 @@ const CampyLogin = ({ alIngresar }) => {
 
   const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+  const limpiarCampo = (campo) => {
+    setErroresCampos((prev) => ({ ...prev, [campo]: '' }));
+    setError('');
+  };
+
+  const marcarError = (campo, mensaje) => {
+    setErroresCampos({ [campo]: mensaje });
+    setError('');
+  };
+
   const cambiarCarrera = (opcion) => {
     setCarreras([opcion]);
     setSelectorCarrerasAbierto(false);
+    limpiarCampo('carrera');
   };
 
   const manejarSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (modoRegistro && carreras.length === 0) {
-      setError('Selecciona una carrera.');
+    setErroresCampos({});
+
+    if (modoRegistro) {
+      if (nombre.trim().length < 3 || nombre.trim().length > 120) {
+        marcarError('nombre', 'El nombre debe tener entre 3 y 120 caracteres.');
+        return;
+      }
+      if (carreras.length === 0) {
+        marcarError('carrera', 'Selecciona una carrera.');
+        return;
+      }
+      if (!/^\d{10}$/.test(telefono)) {
+        marcarError('telefono', 'El teléfono debe tener exactamente 10 dígitos.');
+        return;
+      }
+      if (telefono !== confirmarTelefono) {
+        marcarError('confirmarTelefono', 'Los números de teléfono no coinciden.');
+        return;
+      }
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim())) {
+      marcarError('correo', 'Ingresa un correo electrónico válido.');
+      return;
+    }
+    if (!password) {
+      marcarError('password', 'Ingresa tu contraseña.');
+      return;
+    }
+    if (modoRegistro && !passwordSegura(password)) {
+      const fallo = REQUISITOS_PASSWORD.find((r) => !r.cumple(password));
+      marcarError('password', fallo ? `Tu contraseña no cumple: ${fallo.texto}.` : 'Revisa los requisitos de la contraseña.');
+      return;
+    }
+    if (modoRegistro && password !== confirmarRegistro) {
+      marcarError('confirmarRegistro', 'Las contraseñas no coinciden.');
       return;
     }
     setCargando(true);
-
     const endpoint = modoRegistro ? '/api/auth/registro' : '/api/auth/login';
     const payload = modoRegistro
       ? { nombre: nombre.trim(), correo: correo.trim(), telefono: telefono.trim(), password, carrera: carreras.join(', ') }
@@ -67,24 +174,23 @@ const CampyLogin = ({ alIngresar }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
-      if (respuesta.ok) {
-        const datos = await respuesta.json();
-        alIngresar(
-          datos.usuario || {
-            nombre: modoRegistro ? nombre.trim() : correo.split('@')[0],
-            correo: correo.trim(),
-            carrera: carreras.join(', ')
-          },
-          datos.token
-        );
+      const datos = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok) {
+        const campo = datos.campo || detectarCampoError(datos.mensaje);
+        if (campo) marcarError(campo, datos.mensaje || 'Revisa este campo.');
+        else setError(datos.mensaje || 'No fue posible completar la solicitud.');
         return;
-      } else {
-        const errData = await respuesta.json().catch(() => ({}));
-        setError(errData.mensaje || 'Credenciales inválidas o error en la cuenta.');
       }
+      alIngresar(
+        datos.usuario || {
+          nombre: modoRegistro ? nombre.trim() : correo.split('@')[0],
+          correo: correo.trim(),
+          carrera: carreras.join(', ')
+        },
+        datos.token
+      );
     } catch {
-      setError('Espera unos momentos y vuelve a intentar.');
+      setError('No fue posible conectar con CAMPY. Intenta nuevamente.');
     } finally {
       setCargando(false);
     }
@@ -185,8 +291,8 @@ const CampyLogin = ({ alIngresar }) => {
     setErrorRecuperar('');
     setMensajeRecuperar('');
 
-    if (nuevaPass.length < 8) {
-      setErrorRecuperar('La contraseña debe tener al menos 8 caracteres.');
+    if (!passwordSegura(nuevaPass)) {
+      setErrorRecuperar(nuevaPass.length > 10 ? 'La contraseña no puede tener más de 10 caracteres.' : 'La contraseña no es segura. Usa de 8 a 10 caracteres, mayúsculas, minúsculas, números y un símbolo, sin espacios.');
       return;
     }
     if (nuevaPass !== confirmarPass) {
@@ -249,7 +355,7 @@ const CampyLogin = ({ alIngresar }) => {
           <div className="w-full bg-white/10 p-1 rounded-full flex mb-5">
             <button
               type="button"
-              onClick={() => { setModoRegistro(false); setError(''); }}
+              onClick={() => { setModoRegistro(false); setError(''); setErroresCampos({}); }}
               className={`flex-1 py-2 rounded-full text-xs font-bold transition-all ${!modoRegistro ? 'bg-[#FF8C00] text-white shadow-md' : 'text-white/70 hover:text-white'
                 }`}
             >
@@ -257,7 +363,7 @@ const CampyLogin = ({ alIngresar }) => {
             </button>
             <button
               type="button"
-              onClick={() => { setModoRegistro(true); setError(''); }}
+              onClick={() => { setModoRegistro(true); setError(''); setErroresCampos({}); }}
               className={`flex-1 py-2 rounded-full text-xs font-bold transition-all ${modoRegistro ? 'bg-[#FF8C00] text-white shadow-md' : 'text-white/70 hover:text-white'
                 }`}
             >
@@ -265,24 +371,26 @@ const CampyLogin = ({ alIngresar }) => {
             </button>
           </div>
 
-          <form onSubmit={manejarSubmit} className="w-full flex flex-col gap-3.5">
+          <form onSubmit={manejarSubmit} noValidate className="w-full flex flex-col gap-3.5">
             {modoRegistro && (
               <>
                 <input
                   type="text"
                   value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
+                  onChange={(e) => { setNombre(e.target.value); limpiarCampo('nombre'); }}
                   placeholder="Nombre completo"
-                  className="w-full bg-white rounded-full py-3.5 px-5 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md"
+                  className={`w-full bg-white rounded-full py-3.5 px-5 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md ${erroresCampos.nombre ? CLASE_ERROR_CAMPO : ''}`}
                   required
+                aria-invalid={!!erroresCampos.nombre}
                 />
+                {erroresCampos.nombre && <p role="alert" className={CLASE_ERROR_TEXTO}>{erroresCampos.nombre}</p>}
                 <div className="relative w-full">
                   <button
                     type="button"
                     aria-expanded={selectorCarrerasAbierto}
                     aria-controls="opciones-carreras"
                     onClick={() => setSelectorCarrerasAbierto(!selectorCarrerasAbierto)}
-                    className="w-full bg-white rounded-full py-3.5 pl-5 pr-12 text-left text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md flex items-center"
+                    className={`w-full bg-white rounded-full py-3.5 pl-5 pr-12 text-left text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md flex items-center ${erroresCampos.carrera ? CLASE_ERROR_CAMPO : ''}`}
                   >
                     <span className={`block truncate ${carreras.length ? 'text-gray-800' : 'text-gray-400'}`}>
                       {carreras.length === 0
@@ -319,40 +427,68 @@ const CampyLogin = ({ alIngresar }) => {
                     </div>
                   )}
                 </div>
+                {erroresCampos.carrera && <p role="alert" className={CLASE_ERROR_TEXTO}>{erroresCampos.carrera}</p>}
                 <input
                   type="tel"
                   value={telefono}
-                  onChange={(e) => setTelefono(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  onChange={(e) => { setTelefono(e.target.value.replace(/\D/g, '').slice(0, 10)); limpiarCampo('telefono'); limpiarCampo('confirmarTelefono'); }}
                   placeholder="Teléfono (10 dígitos)"
                   inputMode="numeric"
                   pattern="[0-9]{10}"
                   maxLength={10}
                   title="Ingresa un teléfono de 10 dígitos"
-                  className="w-full bg-white rounded-full py-3.5 px-5 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md"
+                  className={`w-full bg-white rounded-full py-3.5 px-5 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md ${erroresCampos.telefono ? CLASE_ERROR_CAMPO : ''}`}
+                  required
+                aria-invalid={!!erroresCampos.telefono}
+                />
+                {erroresCampos.telefono && <p role="alert" className={CLASE_ERROR_TEXTO}>{erroresCampos.telefono}</p>}
+
+                <input
+                  type="tel"
+                  value={confirmarTelefono}
+                  onChange={(e) => { setConfirmarTelefono(e.target.value.replace(/\D/g, '').slice(0, 10)); limpiarCampo('confirmarTelefono'); }}
+                  placeholder="Confirmar número de teléfono"
+                  inputMode="numeric"
+                  maxLength={10}
+                  className={`w-full bg-white rounded-full py-3.5 px-5 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md ${erroresCampos.confirmarTelefono ? CLASE_ERROR_CAMPO : ''}`}
+                  aria-invalid={!!erroresCampos.confirmarTelefono}
                   required
                 />
+                {erroresCampos.confirmarTelefono && <p role="alert" className={CLASE_ERROR_TEXTO}>{erroresCampos.confirmarTelefono}</p>}
               </>
             )}
 
             <input
               type="email"
               value={correo}
-              onChange={(e) => setCorreo(e.target.value)}
+              onChange={(e) => { setCorreo(e.target.value); limpiarCampo('correo'); }}
               placeholder="Correo electrónico"
-              className="w-full bg-white rounded-full py-3.5 px-5 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md"
+              className={`w-full bg-white rounded-full py-3.5 px-5 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md ${erroresCampos.correo ? CLASE_ERROR_CAMPO : ''}`}
               required
-            />
+            aria-invalid={!!erroresCampos.correo}
+                />
+                {erroresCampos.correo && <p role="alert" className={CLASE_ERROR_TEXTO}>{erroresCampos.correo}</p>}
+
+            {/* Los requisitos se muestran antes de crear la contraseña, solo en registro */}
+            {modoRegistro && (
+              <div id="requisitos-password-registro">
+                <ReglasPassword valor={password} />
+              </div>
+            )}
 
             <div className="relative w-full">
               <input
-                type={!modoRegistro && verPassword ? 'text' : 'password'}
+                type={verPassword ? 'text' : 'password'}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); limpiarCampo('password'); }}
                 placeholder="Contraseña"
-                className={`w-full bg-white rounded-full py-3.5 pl-5 ${!modoRegistro ? 'pr-16' : 'pr-5'} text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md`}
+                aria-describedby={modoRegistro ? 'requisitos-password-registro' : undefined}
+                className={`w-full bg-white rounded-full py-3.5 pl-5 pr-16 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md ${erroresCampos.password ? CLASE_ERROR_CAMPO : ''}`}
                 required
-              />
-              {!modoRegistro && (
+              aria-invalid={!!erroresCampos.password}
+                />
+                {erroresCampos.password && <p role="alert" className={CLASE_ERROR_TEXTO}>{erroresCampos.password}</p>}
+              {(
                 <div className="absolute inset-y-0 right-0 flex items-center pr-4">
                   <button
                     type="button"
@@ -379,6 +515,46 @@ const CampyLogin = ({ alIngresar }) => {
                 </div>
               )}
             </div>
+
+            {modoRegistro && (
+              <>
+                {password.length > 10 && (
+                  <p role="alert" className="text-xs text-red-200 font-semibold px-2">
+                    La contraseña no puede tener más de 10 caracteres.
+                  </p>
+                )}
+                <div className="relative w-full">
+                  <input
+                    type={verConfirmarRegistro ? 'text' : 'password'}
+                    value={confirmarRegistro}
+                    onChange={(e) => { setConfirmarRegistro(e.target.value); limpiarCampo('confirmarRegistro'); }}
+                    placeholder="Confirmar contraseña"
+                    autoComplete="new-password"
+                    aria-label="Confirmar contraseña"
+                    className={`w-full bg-white rounded-full py-3.5 pl-5 pr-16 text-gray-800 text-sm font-medium outline-none focus:ring-2 focus:ring-orange-500 shadow-md ${erroresCampos.confirmarRegistro ? CLASE_ERROR_CAMPO : ''}`}
+                    required
+                  aria-invalid={!!erroresCampos.confirmarRegistro}
+                />
+                {erroresCampos.confirmarRegistro && <p role="alert" className={CLASE_ERROR_TEXTO}>{erroresCampos.confirmarRegistro}</p>}
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-4">
+                    <button
+                      type="button"
+                      onClick={() => setVerConfirmarRegistro((anterior) => !anterior)}
+                      aria-label={verConfirmarRegistro ? 'Ocultar confirmación' : 'Ver confirmación'}
+                      aria-pressed={verConfirmarRegistro}
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-[#0A3895] focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    >
+                      <IconoOjo visible={verConfirmarRegistro} />
+                    </button>
+                  </div>
+                </div>
+                {confirmarRegistro && (
+                  <p className={`text-xs px-2 font-semibold ${password === confirmarRegistro ? 'text-green-200' : 'text-amber-200'}`} role="status">
+                    {password === confirmarRegistro ? '✓ Las contraseñas coinciden.' : 'Las contraseñas todavía no coinciden.'}
+                  </p>
+                )}
+              </>
+            )}
 
             {!modoRegistro && (
               <div className="flex justify-between items-center text-white text-[11px] font-medium px-2 mt-0.5">
@@ -576,7 +752,7 @@ const CampyLogin = ({ alIngresar }) => {
               {pasoRecuperar === 3 && (
                 <form onSubmit={guardarNuevaPassword} className="space-y-3.5">
                   <p className="text-xs text-gray-600 text-center">
-                    Crea una contraseña segura de al menos 8 caracteres que no uses en otros sitios.
+                    Crea una contraseña segura de 8 a 10 caracteres que no uses en otros sitios.
                   </p>
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
@@ -587,10 +763,19 @@ const CampyLogin = ({ alIngresar }) => {
                       minLength={8}
                       value={nuevaPass}
                       onChange={(e) => setNuevaPass(e.target.value)}
-                      placeholder="Mínimo 8 caracteres"
+                      placeholder="Entre 8 y 10 caracteres"
                       required
                       className="w-full px-4 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a73e8]"
                     />
+                  </div>
+                  {nuevaPass.length > 10 && (
+                    <p role="alert" className="text-xs text-red-700 font-semibold">
+                      La contraseña no puede tener más de 10 caracteres.
+                    </p>
+                  )}
+                  <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 text-xs text-gray-700 space-y-1">
+                    <p className="font-bold">Requisitos para una contraseña segura:</p>
+                    <p>Entre 8 y 10 caracteres, una mayúscula, una minúscula, un número y un símbolo; sin espacios.</p>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">

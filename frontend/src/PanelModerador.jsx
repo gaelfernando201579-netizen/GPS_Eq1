@@ -3,6 +3,52 @@ import logoCampy from './assets/logo.png';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+const REQUISITOS_PASSWORD = [
+  { texto: 'Mínimo 8 caracteres', cumple: (valor) => valor.length >= 8 },
+  { texto: 'Máximo 10 caracteres', cumple: (valor) => valor.length <= 10 },
+  { texto: 'Una letra mayúscula', cumple: (valor) => /[A-Z]/.test(valor) },
+  { texto: 'Una letra minúscula', cumple: (valor) => /[a-z]/.test(valor) },
+  { texto: 'Un número', cumple: (valor) => /[0-9]/.test(valor) },
+  { texto: 'Un símbolo (por ejemplo: ! @ # $ %)', cumple: (valor) => /[^A-Za-z0-9\s]/.test(valor) },
+  { texto: 'Sin espacios', cumple: (valor) => !/\s/.test(valor) }
+];
+
+function IconoOjo({ visible }) {
+  return visible ? (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 3l18 18" />
+      <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+      <path d="M9.9 5.1A10.5 10.5 0 0 1 12 5c5 0 9.3 4.2 10 7-.2 1.1-1.4 3-3 4.4" />
+      <path d="M6.6 6.6C4.4 8 2.6 10 2 12c.7 2.8 5 7 10 7 1.4 0 2.7-.3 4-.8" />
+    </svg>
+  ) : (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function ReglasPassword({ valor }) {
+  return (
+    <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
+      <p className="mb-2 text-xs font-bold text-[#0A3895]">Tu contraseña debe cumplir con:</p>
+      <ul className="grid grid-cols-2 gap-x-3 gap-y-2">
+        {REQUISITOS_PASSWORD.map((regla) => {
+          const cumple = valor.length > 0 && regla.cumple(valor);
+          return (
+            <li key={regla.texto} className={`flex items-start gap-1.5 text-[11px] ${cumple ? 'text-green-700' : 'text-gray-600'}`}>
+              <span className="shrink-0 font-black" aria-hidden="true">{cumple ? '✓' : '○'}</span>
+              <span>{regla.texto}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+
 export default function PanelModerador({ token, usuario, productos = [], cargandoProductos = false, errorProductos = '', eliminarPublicacion, alCambiarCatalogo = () => {}, cerrarSesion }) {
   const [pestana, setPestana] = useState('vendedor');
   const [solicitudes, setSolicitudes] = useState([]);
@@ -23,6 +69,64 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
   const [filtroProducto, setFiltroProducto] = useState('');
   const [textoFiltro, setTextoFiltro] = useState('');
   const [tipoBusqueda, setTipoBusqueda] = useState('producto');
+
+  const [mostrarCambioPassword, setMostrarCambioPassword] = useState(false);
+  const [passwordActual, setPasswordActual] = useState('');
+  const [nuevaPassword, setNuevaPassword] = useState('');
+  const [confirmarPassword, setConfirmarPassword] = useState('');
+  const [verPasswordActual, setVerPasswordActual] = useState(false);
+  const [verNuevaPassword, setVerNuevaPassword] = useState(false);
+  const [verConfirmarPassword, setVerConfirmarPassword] = useState(false);
+  const [guardandoPassword, setGuardandoPassword] = useState(false);
+  const [errorPassword, setErrorPassword] = useState('');
+  const [mensajePassword, setMensajePassword] = useState('');
+
+  const guardarCambioPassword = async (evento) => {
+    evento.preventDefault();
+    setErrorPassword('');
+    setMensajePassword('');
+
+    if (REQUISITOS_PASSWORD.some((regla) => !regla.cumple(nuevaPassword))) {
+      setErrorPassword(nuevaPassword.length > 10
+        ? 'La contraseña no puede tener más de 10 caracteres.'
+        : 'La nueva contraseña no cumple todos los requisitos de seguridad.');
+      return;
+    }
+
+    if (nuevaPassword !== confirmarPassword) {
+      setErrorPassword('Las contraseñas nuevas no coinciden.');
+      return;
+    }
+
+    if (!token) {
+      setErrorPassword('Tu sesión no es válida. Inicia sesión nuevamente.');
+      return;
+    }
+
+    setGuardandoPassword(true);
+    try {
+      const respuesta = await fetch(`${API_URL}/api/auth/cambiar-password`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ passwordActual, nuevaPassword, confirmarPassword })
+      });
+      const datos = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo actualizar la contraseña.');
+      setMensajePassword(datos.mensaje || '¡Tu contraseña se actualizó correctamente!');
+      setPasswordActual('');
+      setNuevaPassword('');
+      setConfirmarPassword('');
+      setMostrarCambioPassword(false);
+    } catch (e) {
+      setErrorPassword(e.message || 'No se pudo actualizar la contraseña.');
+    } finally {
+      setGuardandoPassword(false);
+    }
+  };
+
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -370,6 +474,89 @@ export default function PanelModerador({ token, usuario, productos = [], cargand
                 <p className="text-xs text-gray-500">Roles</p>
                 <p className="font-bold text-gray-900">{roles.join(', ')}</p>
               </div>
+              <div className="rounded-3xl border border-gray-100 bg-white p-4 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarCambioPassword((actual) => !actual);
+                    setErrorPassword('');
+                    setMensajePassword('');
+                  }}
+                  aria-expanded={mostrarCambioPassword}
+                  className="w-full rounded-2xl border border-blue-100 bg-blue-50 p-3.5 text-sm font-black text-[#0A3895]"
+                >
+                  Cambiar contraseña {mostrarCambioPassword ? '−' : '+'}
+                </button>
+
+                {mensajePassword && (
+                  <p role="status" className="mt-3 rounded-xl bg-green-50 p-3 text-xs font-semibold text-green-700">
+                    {mensajePassword}
+                  </p>
+                )}
+
+                {mostrarCambioPassword && (
+                  <form onSubmit={guardarCambioPassword} className="mt-4 space-y-3">
+                    <p className="text-xs text-gray-600">Ingresa tu contraseña actual y elige una nueva para proteger tu cuenta.</p>
+
+                    <div>
+                      <label htmlFor="moderador-password-actual" className="mb-1 block text-xs font-bold text-gray-700">Contraseña actual</label>
+                      <div className="relative">
+                        <input id="moderador-password-actual" type={verPasswordActual ? 'text' : 'password'} value={passwordActual}
+                          onChange={(e) => setPasswordActual(e.target.value)} autoComplete="current-password" required
+                          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 pr-12 text-sm text-gray-900 outline-none focus:border-[#0A3895]" />
+                        <button type="button" onClick={() => setVerPasswordActual((actual) => !actual)}
+                          aria-label={verPasswordActual ? 'Ocultar contraseña actual' : 'Mostrar contraseña actual'}
+                          className="absolute inset-y-0 right-2 flex w-9 items-center justify-center text-gray-500">
+                          <IconoOjo visible={verPasswordActual} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <ReglasPassword valor={nuevaPassword} />
+
+                    <div>
+                      <label htmlFor="moderador-password-nueva" className="mb-1 block text-xs font-bold text-gray-700">Nueva contraseña</label>
+                      <div className="relative">
+                        <input id="moderador-password-nueva" type={verNuevaPassword ? 'text' : 'password'} value={nuevaPassword}
+                          onChange={(e) => setNuevaPassword(e.target.value)} autoComplete="new-password" required
+                          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 pr-12 text-sm text-gray-900 outline-none focus:border-[#0A3895]" />
+                        <button type="button" onClick={() => setVerNuevaPassword((actual) => !actual)}
+                          aria-label={verNuevaPassword ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'}
+                          className="absolute inset-y-0 right-2 flex w-9 items-center justify-center text-gray-500">
+                          <IconoOjo visible={verNuevaPassword} />
+                        </button>
+                      </div>
+                      {nuevaPassword.length > 10 && <p role="alert" className="mt-1 text-xs text-red-600">La contraseña no puede tener más de 10 caracteres.</p>}
+                    </div>
+
+                    <div>
+                      <label htmlFor="moderador-password-confirmar" className="mb-1 block text-xs font-bold text-gray-700">Confirmar nueva contraseña</label>
+                      <div className="relative">
+                        <input id="moderador-password-confirmar" type={verConfirmarPassword ? 'text' : 'password'} value={confirmarPassword}
+                          onChange={(e) => setConfirmarPassword(e.target.value)} autoComplete="new-password" required
+                          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 pr-12 text-sm text-gray-900 outline-none focus:border-[#0A3895]" />
+                        <button type="button" onClick={() => setVerConfirmarPassword((actual) => !actual)}
+                          aria-label={verConfirmarPassword ? 'Ocultar confirmación' : 'Mostrar confirmación'}
+                          className="absolute inset-y-0 right-2 flex w-9 items-center justify-center text-gray-500">
+                          <IconoOjo visible={verConfirmarPassword} />
+                        </button>
+                      </div>
+                      {confirmarPassword && (
+                        <p role="status" className={`mt-1 text-xs font-semibold ${confirmarPassword === nuevaPassword ? 'text-green-700' : 'text-amber-700'}`}>
+                          {confirmarPassword === nuevaPassword ? '✓ Las contraseñas coinciden.' : 'Las contraseñas no coinciden.'}
+                        </p>
+                      )}
+                    </div>
+
+                    {errorPassword && <p role="alert" className="rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-700">{errorPassword}</p>}
+                    <button type="submit" disabled={guardandoPassword}
+                      className="w-full rounded-xl bg-[#0A3895] py-3.5 text-sm font-black text-white disabled:opacity-50">
+                      {guardandoPassword ? 'Actualizando...' : 'Actualizar contraseña'}
+                    </button>
+                  </form>
+                )}
+              </div>
+
               <button type="button" onClick={cerrarSesion} className="w-full bg-red-50 border border-red-100 text-red-700 rounded-2xl p-4 font-black text-sm">
                 Cerrar sesión
               </button>

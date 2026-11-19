@@ -6,6 +6,52 @@ import logoCampy from './assets/logo.png';
 const DIAS_SEMANA = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 const BLOQUES_HORA = Array.from({length:11},(_,i)=>`${String(i+7).padStart(2,'0')}-${String(i+8).padStart(2,'0')}`);
 
+const AvisoPanelCampy = ({ titulo, mensaje, tipo = 'error', onCerrar, className = '' }) => {
+  const estilos = {
+    error: { contenedor: 'border-red-100', icono: 'bg-red-50 text-red-600', simbolo: '!', etiqueta: 'text-red-800' },
+    info: { contenedor: 'border-blue-100', icono: 'bg-blue-50 text-blue-700', simbolo: 'i', etiqueta: 'text-blue-900' },
+    advertencia: { contenedor: 'border-amber-100', icono: 'bg-amber-50 text-amber-700', simbolo: '!', etiqueta: 'text-amber-900' },
+  };
+  const estilo = estilos[tipo] || estilos.error;
+  return (
+    <div role={tipo === 'error' ? 'alert' : 'status'} className={`campy-aviso-panel flex items-start gap-3 rounded-2xl border bg-white p-3.5 shadow-sm ${estilo.contenedor} ${className}`}>
+      <span aria-hidden="true" className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg font-black ${estilo.icono}`}>
+        {estilo.simbolo}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className={`text-xs font-black ${estilo.etiqueta}`}>{titulo}</p>
+        <p className="mt-1 break-words text-xs leading-relaxed text-slate-600">{mensaje}</p>
+      </div>
+      {onCerrar && (
+        <button type="button" onClick={onCerrar} aria-label="Cerrar aviso" title="Cerrar aviso"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">×</button>
+      )}
+    </div>
+  );
+};
+
+const REQUISITOS_PASSWORD_CUENTA = [
+  { texto: 'Mínimo 8 caracteres', cumple: valor => valor.length >= 8 },
+  { texto: 'Máximo 10 caracteres', cumple: valor => valor.length <= 10 },
+  { texto: 'Una mayúscula', cumple: valor => /[A-Z]/.test(valor) },
+  { texto: 'Una minúscula', cumple: valor => /[a-z]/.test(valor) },
+  { texto: 'Un número', cumple: valor => /[0-9]/.test(valor) },
+  { texto: 'Un símbolo (! @ # $ %)', cumple: valor => /[^A-Za-z0-9\s]/.test(valor) },
+  { texto: 'Sin espacios', cumple: valor => !/\s/.test(valor) }
+];
+
+function OjoContrasenaCuenta({ visible }) {
+  return visible ? (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.1A10.5 10.5 0 0 1 12 5c5 0 9.3 4.2 10 7-.2 1.1-1.4 3-3 4.4"/><path d="M6.6 6.6C4.4 8 2.6 10 2 12c.7 2.8 5 7 10 7 1.4 0 2.7-.3 4-.8"/>
+    </svg>
+  ) : (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+    </svg>
+  );
+}
+
 const PanelVendedor = ({
   usuario,
   actualizarDatosVendedor,
@@ -28,6 +74,74 @@ const PanelVendedor = ({
   const [avisosModeracion, setAvisosModeracion] = useState([]);
   const [errorProducto, setErrorProducto] = useState('');
   const [modalActivo, setModalActivo] = useState(null);
+  const [passwordActualCuenta, setPasswordActualCuenta] = useState('');
+  const [nuevaPasswordCuenta, setNuevaPasswordCuenta] = useState('');
+  const [confirmarPasswordCuenta, setConfirmarPasswordCuenta] = useState('');
+  const [verPasswordActualCuenta, setVerPasswordActualCuenta] = useState(false);
+  const [verNuevaPasswordCuenta, setVerNuevaPasswordCuenta] = useState(false);
+  const [verConfirmarPasswordCuenta, setVerConfirmarPasswordCuenta] = useState(false);
+  const [errorPasswordCuenta, setErrorPasswordCuenta] = useState('');
+  const [exitoPasswordCuenta, setExitoPasswordCuenta] = useState('');
+  const [guardandoPasswordCuenta, setGuardandoPasswordCuenta] = useState(false);
+
+  const abrirCambioPasswordCuenta = () => {
+    setPasswordActualCuenta('');
+    setNuevaPasswordCuenta('');
+    setConfirmarPasswordCuenta('');
+    setErrorPasswordCuenta('');
+    setExitoPasswordCuenta('');
+    setVerPasswordActualCuenta(false);
+    setVerNuevaPasswordCuenta(false);
+    setVerConfirmarPasswordCuenta(false);
+    setModalActivo('cambiarPasswordCuenta');
+  };
+
+  const guardarCambioPasswordCuenta = async (evento) => {
+    evento.preventDefault();
+    setErrorPasswordCuenta('');
+    setExitoPasswordCuenta('');
+    if (!passwordActualCuenta) {
+      setErrorPasswordCuenta('Ingresa tu contraseña actual.');
+      return;
+    }
+    if (!REQUISITOS_PASSWORD_CUENTA.every(regla => regla.cumple(nuevaPasswordCuenta))) {
+      setErrorPasswordCuenta('La contraseña nueva debe cumplir todos los requisitos.');
+      return;
+    }
+    if (nuevaPasswordCuenta !== confirmarPasswordCuenta) {
+      setErrorPasswordCuenta('Las contraseñas nuevas no coinciden.');
+      return;
+    }
+    if (passwordActualCuenta === nuevaPasswordCuenta) {
+      setErrorPasswordCuenta('La contraseña nueva debe ser diferente de la actual.');
+      return;
+    }
+    setGuardandoPasswordCuenta(true);
+    try {
+      const token = localStorage.getItem('campy_token');
+      if (!token) throw new Error('Inicia sesión nuevamente para cambiar tu contraseña.');
+      const respuesta = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/cambiar-password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          passwordActual: passwordActualCuenta,
+          nuevaPassword: nuevaPasswordCuenta,
+          confirmarPassword: confirmarPasswordCuenta
+        })
+      });
+      const datos = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo cambiar la contraseña.');
+      setPasswordActualCuenta('');
+      setNuevaPasswordCuenta('');
+      setConfirmarPasswordCuenta('');
+      setExitoPasswordCuenta(datos.mensaje || 'Contraseña actualizada correctamente.');
+    } catch (error) {
+      setErrorPasswordCuenta(error.message || 'No se pudo cambiar la contraseña.');
+    } finally {
+      setGuardandoPasswordCuenta(false);
+    }
+  };
+
 
   // Estados para crear / editar producto
   const [productoEditandoId, setProductoEditandoId] = useState(null);
@@ -39,6 +153,10 @@ const PanelVendedor = ({
   const [prodComentario, setProdComentario] = useState('');
   const [prodImagen, setProdImagen] = useState(null);
   const [archivoFoto, setArchivoFoto] = useState(null);
+  const [camaraAbierta, setCamaraAbierta] = useState(false);
+  const [camaraCargando, setCamaraCargando] = useState(false);
+  const [errorCamara, setErrorCamara] = useState('');
+  const videoCamaraRef = useRef(null);
   useEffect(() => {
     let activo=true;
     fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/productos/categorias`)
@@ -121,12 +239,14 @@ const PanelVendedor = ({
     setProdDefinicion(prod.descripcion || prod.definicion || '');
     setProdComentario(prod.comentario || '');
     setProdImagen(prod.imagen_url || prod.imagen || null);
+    setArchivoFoto(null);
     setModalActivo('producto');
   };
 
   const manejarSeleccionFoto = (e) => {
     const archivo = e.target.files?.[0];
     if (!archivo) return;
+    e.target.value = '';
 
     // Guardar el archivo real para subirlo después
     setArchivoFoto(archivo);
@@ -137,6 +257,89 @@ const PanelVendedor = ({
       setProdImagen(reader.result);
     };
     reader.readAsDataURL(archivo);
+  };
+
+  useEffect(() => {
+    if (!camaraAbierta) return;
+
+    let cancelado = false;
+    let flujo = null;
+    setCamaraCargando(true);
+    setErrorCamara('');
+
+    const iniciarCamara = async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setErrorCamara('La cámara requiere HTTPS o localhost y un navegador compatible.');
+        setCamaraCargando(false);
+        return;
+      }
+      try {
+        flujo = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: 'environment' } }
+        });
+        if (cancelado) {
+          flujo.getTracks().forEach((pista) => pista.stop());
+          return;
+        }
+        if (videoCamaraRef.current) {
+          videoCamaraRef.current.srcObject = flujo;
+          await videoCamaraRef.current.play();
+        }
+      } catch (error) {
+        if (!cancelado) {
+          const mensaje = error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError'
+            ? 'No se autorizó la cámara. Permite el acceso desde los ajustes del navegador e inténtalo de nuevo.'
+            : error.name === 'NotFoundError'
+              ? 'No se encontró una cámara disponible en este dispositivo.'
+              : 'No se pudo abrir la cámara. Revisa los permisos y que otra aplicación no la esté utilizando.';
+          setErrorCamara(mensaje);
+        }
+      } finally {
+        if (!cancelado) setCamaraCargando(false);
+      }
+    };
+
+    iniciarCamara();
+    return () => {
+      cancelado = true;
+      if (flujo) flujo.getTracks().forEach((pista) => pista.stop());
+      if (videoCamaraRef.current) videoCamaraRef.current.srcObject = null;
+    };
+  }, [camaraAbierta]);
+
+  useEffect(() => {
+    if (modalActivo !== 'producto') setCamaraAbierta(false);
+  }, [modalActivo]);
+
+  const capturarFoto = () => {
+    const video = videoCamaraRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      setErrorCamara('La cámara todavía no está lista. Inténtalo de nuevo.');
+      return;
+    }
+    const lienzo = document.createElement('canvas');
+    lienzo.width = video.videoWidth;
+    lienzo.height = video.videoHeight;
+    const contexto = lienzo.getContext('2d');
+    if (!contexto) {
+      setErrorCamara('No se pudo preparar la fotografía.');
+      return;
+    }
+    contexto.drawImage(video, 0, 0, lienzo.width, lienzo.height);
+    lienzo.toBlob((imagen) => {
+      if (!imagen) {
+        setErrorCamara('No se pudo capturar la fotografía. Inténtalo otra vez.');
+        return;
+      }
+      const archivo = new File([imagen], `producto-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      setArchivoFoto(archivo);
+      const lector = new FileReader();
+      lector.onloadend = () => setProdImagen(lector.result);
+      lector.readAsDataURL(archivo);
+      setCamaraAbierta(false);
+      setErrorCamara('');
+    }, 'image/jpeg', 0.9);
   };
 
   const guardarProducto = async (e) => {
@@ -331,6 +534,12 @@ const PanelVendedor = ({
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center font-sans">
+      <style>{`
+        div.campy-aviso-panel { background: #fff; border-left-width: 1px; color: #334155; padding: 14px; border-radius: 16px; box-shadow: 0 4px 14px rgba(15,23,42,.06); }
+        div.campy-aviso-panel p { margin-top: 0; }
+        div.campy-aviso-panel p + p { margin-top: 5px; }
+      `}</style>
+
       <div className="w-full max-w-[400px] h-screen sm:h-[800px] bg-gray-50 relative flex flex-col shadow-2xl sm:rounded-2xl overflow-hidden">
 
         {/* ENCABEZADO AZUL CON DISTINTIVO DE VENDEDOR */}
@@ -363,7 +572,7 @@ const PanelVendedor = ({
           {/* ================= APARTADO 1: MIS PRODUCTOS ================= */}
           {tabActiva === 'productos' && (
             <>
-              {errorProducto && <p role="alert" className="text-xs text-red-700 bg-red-50 rounded-xl p-3 mb-3">{errorProducto}</p>}
+              {errorProducto && <AvisoPanelCampy titulo="No se pudo completar la acción" mensaje={errorProducto} onCerrar={() => setErrorProducto('')} className="mb-3" />}
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-black text-sm text-gray-900 uppercase tracking-wide">
                   Mis Productos ({misProductos.length})
@@ -481,18 +690,40 @@ const PanelVendedor = ({
                 >
                   🛒 Modo comprador
                 </button>
+                <button
+                  type="button"
+                  onClick={abrirCambioPasswordCuenta}
+                  className="w-full bg-white border border-gray-200 text-[#0A3895] font-bold text-xs py-3.5 rounded-2xl hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <span aria-hidden="true">🔒</span> Cambiar contraseña
+                </button>
+                {errorProducto && <AvisoPanelCampy titulo="No se pudieron gestionar los avisos" mensaje={errorProducto} onCerrar={() => setErrorProducto('')} />}
                 {avisosModeracion.length > 0 && (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
-                    <h3 className="font-black text-sm">Avisos de publicaciones retiradas</h3>
+                  <section aria-label="Avisos de publicaciones retiradas" className="space-y-3">
+                    <div className="flex items-center justify-between gap-2 px-1">
+                      <h3 className="text-xs font-black uppercase tracking-wide text-slate-800">Avisos de moderación</h3>
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black text-amber-800">{avisosModeracion.length} {avisosModeracion.length === 1 ? 'aviso' : 'avisos'}</span>
+                    </div>
                     {avisosModeracion.map(aviso => (
-                      <div key={aviso.id_producto} className="mt-2 flex items-start gap-2 text-xs leading-relaxed">
-                        <p className="flex-1">El producto <strong>{aviso.nombre}</strong> fue inhabilitado{aviso.origen_inhabilitacion === 'Moderación' ? ' por moderación' : ' tras el retiro del rol de vendedor'}. Ya no aparece en el catálogo.</p>
+                      <div key={aviso.id_producto} className="campy-aviso-panel flex items-start gap-3 rounded-2xl border border-amber-100 bg-white p-3.5 shadow-sm">
+                        <div aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="m3 9 9-5 9 5v10l-9 5-9-5z"/><path d="m3 9 9 5 9-5"/><path d="M12 14v10"/>
+                          </svg>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-black text-slate-900">Publicación retirada</p>
+                          <p className="mt-1 break-words text-xs leading-relaxed text-slate-600">
+                            Tu producto <strong className="text-slate-800">{aviso.nombre}</strong> fue inhabilitado{aviso.origen_inhabilitacion === 'Moderación' ? ' por moderación' : ' tras el retiro del rol de vendedor'}. Ya no aparece en el catálogo.
+                          </p>
+                          <p className="mt-2 text-[10px] font-semibold text-amber-700">Aviso para vendedor</p>
+                        </div>
                         <button type="button" onClick={() => descartarAviso(aviso.id_producto)}
-                          aria-label="Descartar aviso" title="No volver a mostrar"
-                          className="bg-white border border-amber-200 rounded-lg px-2 py-1 font-black text-amber-900">×</button>
+                          aria-label={`Descartar aviso de ${aviso.nombre}`} title="No volver a mostrar"
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">×</button>
                       </div>
                     ))}
-                  </div>
+                  </section>
                 )}
                 <button
                   onClick={cerrarSesion}
@@ -527,8 +758,8 @@ const PanelVendedor = ({
               </div>
 
               {cargandoPedidos && <p className="text-xs text-gray-500 mb-3">Consultando pedidos...</p>}
-              {errorPedidos && <p role="alert" className="text-red-600 text-xs mb-3">{errorPedidos}</p>}
-              {errorAccionPedido && <p role="alert" className="text-red-600 text-xs mb-3">{errorAccionPedido}</p>}
+              {errorPedidos && <AvisoPanelCampy titulo="No se pudieron consultar los pedidos" mensaje={errorPedidos} className="mb-3" />}
+              {errorAccionPedido && <AvisoPanelCampy titulo="No se pudo actualizar el pedido" mensaje={errorAccionPedido} onCerrar={() => setErrorAccionPedido('')} className="mb-3" />}
               {pedidosVendedor.length === 0 ? (
                 !cargandoPedidos && !errorPedidos && (
                   <div className="bg-white rounded-3xl p-6 text-center border border-gray-100">
@@ -579,6 +810,35 @@ const PanelVendedor = ({
                             Pedido #{ped.id} • {ped.hora}
                           </span>
                         </div>
+
+                        {/* Motivos de entregas liberadas por repartidores */}
+                        {Array.isArray(ped.avisosReasignacion) && ped.avisosReasignacion.length > 0 && (
+                          <section className="mb-3 space-y-2" aria-label={`Avisos de reasignación del pedido ${ped.id}`}>
+                            {ped.avisosReasignacion.map((aviso) => (
+                              <div key={aviso.id} className="campy-aviso-panel flex items-start gap-3 rounded-2xl border border-amber-200 bg-white p-3.5 shadow-sm">
+                                <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700">
+                                  <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M10.3 3.5 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3l-7.5-13.5a2 2 0 0 0-3.4 0Z" />
+                                    <path d="M12 9v4m0 4h.01" />
+                                  </svg>
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-black text-slate-900">Entrega liberada para reasignación</p>
+                                  <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                                    <strong className="text-slate-800">{aviso.repartidor}</strong> era el repartidor asignado al pedido #{ped.id}.
+                                  </p>
+                                  <p className="mt-2 break-words rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-950">
+                                    <strong>Motivo:</strong> {aviso.motivo}
+                                  </p>
+                                  <p className="mt-2 text-[10px] font-medium text-slate-500">
+                                    {aviso.fecha ? new Date(aviso.fecha).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : 'Reasignación registrada'}
+                                    {' · '}El pedido sigue activo para otro repartidor.
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </section>
+                        )}
 
                         {/* Datos de a quién le debemos el pedido */}
                         <div className="bg-[#F4F7FD] rounded-2xl p-3 mb-3 border border-blue-100">
@@ -671,7 +931,7 @@ const PanelVendedor = ({
                               <button onClick={() => manejarCambioEstadoPedido(ped.id, 'Repartidor llegó')}
                                 className="bg-[#FF8C00] text-white rounded-xl p-3 font-bold">🛵 El repartidor llegó</button>
                             )}
-                            {ped.estadoReparto === 'Listo' && !ped.repartidorAsignado && <p>Esperando que un repartidor acepte el pedido.</p>}
+                            {ped.estadoReparto === 'Listo' && !ped.repartidorAsignado && <AvisoPanelCampy tipo="info" titulo="Buscando repartidor" mensaje="El pedido está listo. Estamos esperando que un repartidor lo acepte." />}
                             {ped.repartidorId && ['Aceptado','Listo','Repartidor llegó'].includes(ped.estadoReparto) && (
                               <button type="button" onClick={() => liberarPedidoParaOtro(ped)}
                                 className="w-full bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl p-3">
@@ -851,6 +1111,79 @@ const PanelVendedor = ({
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-40" onClick={() => setModalActivo(null)}></div>
         )}
 
+        {/* CAMBIAR CONTRASEÑA DESDE MI CUENTA DEL VENDEDOR */}
+        {modalActivo === 'cambiarPasswordCuenta' && (
+          <div className="absolute bottom-0 left-0 w-full max-h-[92%] overflow-y-auto bg-white rounded-t-[30px] p-5 pb-9 z-50 animate-[slideUp_0.3s_ease-out]">
+            <div className="w-12 h-1.5 rounded-full bg-gray-300 mx-auto mb-3" />
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-black text-[#0A3895]">Cambiar contraseña</h2>
+              <button type="button" onClick={() => setModalActivo(null)} aria-label="Cerrar" className="font-bold text-gray-500 px-2">✕</button>
+            </div>
+            <form onSubmit={guardarCambioPasswordCuenta} className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Contraseña actual</label>
+                <div className="relative">
+                  <input type={verPasswordActualCuenta ? 'text' : 'password'} value={passwordActualCuenta}
+                    onChange={e => setPasswordActualCuenta(e.target.value)} autoComplete="current-password"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-3 pr-12 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0A3895]" required />
+                  <button type="button" aria-label={verPasswordActualCuenta ? 'Ocultar contraseña actual' : 'Mostrar contraseña actual'}
+                    onClick={() => setVerPasswordActualCuenta(v => !v)} className="absolute inset-y-0 right-2 px-2 text-gray-500">
+                    <OjoContrasenaCuenta visible={verPasswordActualCuenta}/>
+                  </button>
+                </div>
+              </div>
+              <div id="reglas-password-vendedor" className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-3">
+                <p className="text-xs font-bold text-[#0A3895] mb-2">Tu nueva contraseña debe cumplir con:</p>
+                <ul className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+                  {REQUISITOS_PASSWORD_CUENTA.map(regla => {
+                    const cumple = nuevaPasswordCuenta.length > 0 && regla.cumple(nuevaPasswordCuenta);
+                    return (
+                      <li key={regla.texto} className={`text-[10px] flex items-start gap-1.5 ${cumple ? 'text-green-700' : 'text-slate-600'}`}>
+                        <span aria-hidden="true" className="font-black">{cumple ? '✓' : '○'}</span>{regla.texto}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Nueva contraseña</label>
+                <div className="relative">
+                  <input type={verNuevaPasswordCuenta ? 'text' : 'password'} value={nuevaPasswordCuenta}
+                    onChange={e => setNuevaPasswordCuenta(e.target.value)} autoComplete="new-password"
+                    aria-describedby="reglas-password-vendedor"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-3 pr-12 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0A3895]" required />
+                  <button type="button" aria-label={verNuevaPasswordCuenta ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'}
+                    onClick={() => setVerNuevaPasswordCuenta(v => !v)} className="absolute inset-y-0 right-2 px-2 text-gray-500">
+                    <OjoContrasenaCuenta visible={verNuevaPasswordCuenta}/>
+                  </button>
+                </div>
+                {nuevaPasswordCuenta.length > 10 && <p className="mt-1 text-xs font-semibold text-red-700">La contraseña no puede tener más de 10 caracteres.</p>}
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Confirmar nueva contraseña</label>
+                <div className="relative">
+                  <input type={verConfirmarPasswordCuenta ? 'text' : 'password'} value={confirmarPasswordCuenta}
+                    onChange={e => setConfirmarPasswordCuenta(e.target.value)} autoComplete="new-password"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-3 pr-12 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0A3895]" required />
+                  <button type="button" aria-label={verConfirmarPasswordCuenta ? 'Ocultar confirmación' : 'Mostrar confirmación'}
+                    onClick={() => setVerConfirmarPasswordCuenta(v => !v)} className="absolute inset-y-0 right-2 px-2 text-gray-500">
+                    <OjoContrasenaCuenta visible={verConfirmarPasswordCuenta}/>
+                  </button>
+                </div>
+                {confirmarPasswordCuenta.length > 0 && <p className={`mt-1 text-xs font-semibold ${confirmarPasswordCuenta === nuevaPasswordCuenta ? 'text-green-700' : 'text-amber-700'}`}>
+                  {confirmarPasswordCuenta === nuevaPasswordCuenta ? '✓ Las contraseñas coinciden.' : 'Las contraseñas todavía no coinciden.'}
+                </p>}
+              </div>
+              {errorPasswordCuenta && <p role="alert" className="text-xs text-red-700 bg-red-50 p-3 rounded-xl">{errorPasswordCuenta}</p>}
+              {exitoPasswordCuenta && <p role="status" className="text-xs text-green-800 bg-green-50 p-3 rounded-xl">{exitoPasswordCuenta}</p>}
+              <button type="submit" disabled={guardandoPasswordCuenta}
+                className="w-full rounded-xl bg-[#0A3895] text-white font-bold py-3 text-sm disabled:opacity-60">
+                {guardandoPasswordCuenta ? 'Actualizando...' : 'Actualizar contraseña'}
+              </button>
+            </form>
+          </div>
+        )}
+
         {/* MODAL NUEVO: ACEPTAR / DECLINAR PEDIDO Y ELEGIR REPARTIDOR */}
         {modalActivo === 'gestionarPedido' && pedidoSeleccionado && (
           <div className="absolute bottom-0 left-0 w-full max-h-[92%] overflow-y-auto bg-white rounded-t-[30px] p-6 pb-10 z-50 animate-[slideUp_0.3s_ease-out]">
@@ -865,7 +1198,7 @@ const PanelVendedor = ({
               Solicitado por <span className="font-bold text-gray-800">{pedidoSeleccionado.compradorNombre}</span>. Confirma si aceptas el pedido y cómo lo entregarás.
             </p>
 
-            {errorAccionPedido && <p role="alert" className="text-red-600 text-xs font-bold mb-2">{errorAccionPedido}</p>}
+            {errorAccionPedido && <AvisoPanelCampy titulo="No se pudo confirmar el pedido" mensaje={errorAccionPedido} onCerrar={() => setErrorAccionPedido('')} className="mb-2" />}
             <form onSubmit={confirmarAceptacionPedido} className="flex flex-col gap-3.5">
               {/* Selector: ¿Lo llevas tú o necesitas Repartidor? */}
               <div>
@@ -1007,10 +1340,44 @@ const PanelVendedor = ({
                   )}
                   <input type="file" accept="image/*" onChange={manejarSeleccionFoto} className="hidden" />
                 </label>
-                <label className="inline-flex items-center justify-center mt-2 bg-blue-50 text-[#0A3895] border border-blue-100 p-2 rounded-xl text-xs font-bold cursor-pointer">
+                <button
+                  type="button"
+                  onClick={() => { setErrorCamara(''); setCamaraAbierta(true); }}
+                  className="inline-flex items-center justify-center mt-2 bg-blue-50 text-[#0A3895] border border-blue-100 p-2 rounded-xl text-xs font-bold hover:bg-blue-100"
+                >
                   📸 Tomar foto con la cámara
-                  <input type="file" accept="image/*" capture="environment" onChange={manejarSeleccionFoto} className="hidden" />
-                </label>
+                </button>
+                {camaraAbierta && (
+                  <div className="mt-3 rounded-2xl border border-blue-100 bg-slate-900 p-3 space-y-3">
+                    <p className="text-xs font-bold text-white">Cámara del producto</p>
+                    <video
+                      ref={videoCamaraRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full aspect-[4/3] rounded-xl bg-black object-cover"
+                    />
+                    {camaraCargando && <p className="text-xs text-white">Solicitando permiso y abriendo la cámara...</p>}
+                    {errorCamara && <p role="alert" className="text-xs text-red-700 bg-red-50 rounded-xl p-2">{errorCamara}</p>}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCamaraAbierta(false)}
+                        className="bg-white text-gray-700 py-2.5 rounded-xl text-xs font-bold"
+                      >
+                        Cerrar cámara
+                      </button>
+                      <button
+                        type="button"
+                        onClick={capturarFoto}
+                        disabled={camaraCargando || !!errorCamara}
+                        className="bg-[#FF8C00] text-white py-2.5 rounded-xl text-xs font-bold disabled:opacity-50"
+                      >
+                        Capturar foto
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-2">
@@ -1112,7 +1479,7 @@ const PanelVendedor = ({
                   required
                 />
                 {errorCancelacion && (
-                  <p className="text-[11px] text-red-600 font-bold mt-1">{errorCancelacion}</p>
+                    <AvisoPanelCampy titulo="Revisa la nota de cancelación" mensaje={errorCancelacion} onCerrar={() => setErrorCancelacion('')} className="mt-2" />
                 )}
               </div>
 

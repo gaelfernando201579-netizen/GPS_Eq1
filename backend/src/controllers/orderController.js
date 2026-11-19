@@ -60,8 +60,18 @@ export async function crearPedido(req, res) {
 
     const cantidades = normalizarItems(req.body?.items);
     const metodoPago = String(req.body?.metodoPago || '').toLowerCase();
-    const metodos = { efectivo: 'Efectivo', transferencia: 'Transferencia', tarjeta: 'Tarjeta' };
-    if (!metodos[metodoPago]) throw errorCliente('Elige un método de pago para enviar el pedido.');
+    const metodos = {
+      efectivo: 'Efectivo',
+      transferencia: 'Transferencia',
+      tarjeta: 'Tarjeta'
+    };
+
+    if (!metodos[metodoPago]) {
+      throw errorCliente(
+        'Elige un método de pago para enviar el pedido.'
+      );
+    }
+
     const puntoEntrega = req.body?.puntoEntrega?.trim();
     const horarioEntrega = req.body?.horarioEntrega;
     const fechaEntrega = new Date(horarioEntrega);
@@ -106,10 +116,10 @@ export async function crearPedido(req, res) {
 
     if (
       minutosDelDia < 7 * 60 ||
-      minutosDelDia > 18 * 60
+      minutosDelDia > 20 * 60
     ) {
       throw errorCliente(
-        'La hora de entrega debe estar entre las 7:00 a. m. y las 6:00 p. m.'
+        'La hora de entrega debe estar entre las 7:00 a. m. y las 8:00 p. m.'
       );
     }
 
@@ -117,11 +127,33 @@ export async function crearPedido(req, res) {
     await client.query('BEGIN');
 
     const compradorId = Number(req.usuario.id);
-    const tarjetaId = metodoPago === 'tarjeta' ? Number(req.body?.idTarjeta) : null;
+
+    const tarjetaId =
+      metodoPago === 'tarjeta'
+        ? Number(req.body?.idTarjeta)
+        : null;
+
     if (metodoPago === 'tarjeta') {
-      if (!Number.isSafeInteger(tarjetaId) || tarjetaId < 1) throw errorCliente('Selecciona una tarjeta de prueba guardada.');
-      const tarjeta = await client.query('SELECT 1 FROM public.tarjetas_guardadas WHERE id_usuario=$1 AND id_tarjeta=$2', [compradorId, tarjetaId]);
-      if (!tarjeta.rowCount) throw errorCliente('La tarjeta no pertenece a tu cuenta.', 403);
+      if (!Number.isSafeInteger(tarjetaId) || tarjetaId < 1) {
+        throw errorCliente(
+          'Selecciona una tarjeta de prueba guardada.'
+        );
+      }
+
+      const tarjeta = await client.query(
+        `SELECT 1
+         FROM public.tarjetas_guardadas
+         WHERE id_usuario = $1
+           AND id_tarjeta = $2`,
+        [compradorId, tarjetaId]
+      );
+
+      if (!tarjeta.rowCount) {
+        throw errorCliente(
+          'La tarjeta no pertenece a tu cuenta.',
+          403
+        );
+      }
     }
 
     const comprador = await client.query(
@@ -143,12 +175,15 @@ export async function crearPedido(req, res) {
        WHERE id_producto = ANY($1::integer[])
          AND inhabilitado_permanente = FALSE
          AND EXISTS (
-           SELECT 1 FROM public.usuario_roles ur
-           JOIN public.roles r ON r.id_rol = ur.id_rol
+           SELECT 1
+           FROM public.usuario_roles ur
+           JOIN public.roles r
+             ON r.id_rol = ur.id_rol
            WHERE ur.id_usuario = public.productos.id_vendedor
              AND LOWER(TRIM(r.nombre)) = 'vendedor'
          )
-       ORDER BY id_producto FOR UPDATE`,
+       ORDER BY id_producto
+       FOR UPDATE`,
       [[...cantidades.keys()]]
     );
 
@@ -230,12 +265,20 @@ export async function crearPedido(req, res) {
 
       const creado = await client.query(
         `INSERT INTO public.pedidos
-          (id_comprador, id_vendedor, subtotal, total,
-           punto_entrega_acordado,
-           horario_entrega_acordado,
-           estado, fecha_pedido)
-         VALUES ($1, $2, $3, $3, $4, $5,
-                 'Pendiente', CURRENT_TIMESTAMP)
+          (
+            id_comprador,
+            id_vendedor,
+            subtotal,
+            total,
+            punto_entrega_acordado,
+            horario_entrega_acordado,
+            estado,
+            fecha_pedido
+          )
+         VALUES (
+           $1, $2, $3, $3, $4, $5,
+           'Pendiente', CURRENT_TIMESTAMP
+         )
          RETURNING id_pedido`,
         [
           compradorId,
@@ -247,22 +290,41 @@ export async function crearPedido(req, res) {
       );
 
       const idPedido = creado.rows[0].id_pedido;
-      await client.query(`INSERT INTO public.pedido_metodos_pago (pedido_id,id_comprador,metodo,id_tarjeta)
-        VALUES ($1,$2,$3,$4)`,[idPedido,compradorId,metodos[metodoPago],tarjetaId]);
+
+      await client.query(
+        `INSERT INTO public.pedido_metodos_pago
+          (
+            pedido_id,
+            id_comprador,
+            metodo,
+            id_tarjeta
+          )
+         VALUES ($1, $2, $3, $4)`,
+        [
+          idPedido,
+          compradorId,
+          metodos[metodoPago],
+          tarjetaId
+        ]
+      );
 
       for (const producto of productos) {
         const precio = Number(producto.precio).toFixed(2);
 
         const subtotalDetalle = (
           Math.round(Number(producto.precio) * 100) *
-          producto.cantidad /
-          100
+          producto.cantidad / 100
         ).toFixed(2);
 
         await client.query(
           `INSERT INTO public.detalle_pedido
-            (id_pedido, id_producto, cantidad,
-             precio_unitario, subtotal)
+            (
+              id_pedido,
+              id_producto,
+              cantidad,
+              precio_unitario,
+              subtotal
+            )
            VALUES ($1, $2, $3, $4, $5)`,
           [
             idPedido,
@@ -320,42 +382,103 @@ async function consultarPedidos(req, res, campo) {
     }
 
     const resultado = await pool.query(
-      `SELECT p.id_pedido, p.estado, p.total, p.subtotal,
-              p.fecha_pedido, p.punto_entrega_acordado,
-              p.horario_entrega_acordado,
-              c.nombre AS comprador_nombre,
-              v.nombre AS vendedor_nombre,
-              d.id_producto, d.cantidad, d.precio_unitario,
-              pr.nombre AS producto_nombre, pr.imagen_url,
-              cal.estrellas AS calificacion_estrellas, cal.comentario AS calificacion_comentario,
-              mp.metodo AS metodo_pago,
-              rp.estado AS estado_reparto, rp.id_repartidor,
-              rp.lugar_recoleccion, rp.punto_entrega AS punto_entrega_reparto,
-              rp.comision AS comision_repartidor,
-              p.comentario_entrega_comprador,p.comentario_entrega_vendedor,p.comentario_entrega_repartidor,
-              ru.nombre AS repartidor_nombre
+      `SELECT
+         p.id_pedido,
+         p.estado,
+         p.total,
+         p.subtotal,
+         p.fecha_pedido,
+         p.punto_entrega_acordado,
+         p.horario_entrega_acordado,
+
+         c.nombre AS comprador_nombre,
+         v.nombre AS vendedor_nombre,
+
+         d.id_producto,
+         d.cantidad,
+         d.precio_unitario,
+
+         pr.nombre AS producto_nombre,
+         pr.imagen_url,
+
+         cal.estrellas AS calificacion_estrellas,
+         cal.comentario AS calificacion_comentario,
+
+         mp.metodo AS metodo_pago,
+
+         rp.estado AS estado_reparto,
+         rp.id_repartidor,
+         rp.lugar_recoleccion,
+         rp.punto_entrega AS punto_entrega_reparto,
+         rp.comision AS comision_repartidor,
+
+         p.comentario_entrega_comprador,
+         p.comentario_entrega_vendedor,
+         p.comentario_entrega_repartidor,
+
+         ru.nombre AS repartidor_nombre,
+
+         CASE
+           WHEN p.id_vendedor = $1 THEN
+             COALESCE(
+               (
+                 SELECT json_agg(
+                   json_build_object(
+                     'id', ra.id_reasignacion,
+                     'repartidor', COALESCE(
+                       u.nombre,
+                       'Repartidor'
+                     ),
+                     'motivo', ra.motivo,
+                     'fecha', ra.fecha
+                   )
+                   ORDER BY
+                     ra.fecha DESC,
+                     ra.id_reasignacion DESC
+                 )
+                 FROM public.reparto_reasignaciones ra
+                 LEFT JOIN public.usuarios u
+                   ON u.id_usuario = ra.id_repartidor_anterior
+                 WHERE ra.id_pedido = p.id_pedido
+               ),
+               '[]'::json
+             )
+           ELSE '[]'::json
+         END AS avisos_reasignacion
+
        FROM public.pedidos p
+
        JOIN public.usuarios c
          ON c.id_usuario = p.id_comprador
+
        JOIN public.usuarios v
          ON v.id_usuario = p.id_vendedor
+
        LEFT JOIN public.detalle_pedido d
          ON d.id_pedido = p.id_pedido
+
        LEFT JOIN public.productos pr
          ON pr.id_producto = d.id_producto
+
        LEFT JOIN public.calificaciones_pedidos cal
          ON cal.id_pedido = p.id_pedido
+
        LEFT JOIN public.pedido_metodos_pago mp
          ON mp.pedido_id = p.id_pedido
+
        LEFT JOIN public.pedido_repartos rp
          ON rp.id_pedido = p.id_pedido
+
        LEFT JOIN public.usuarios ru
          ON ru.id_usuario = rp.id_repartidor
+
        WHERE p.${campo} = $1
          AND p.oculto_por_retiro_vendedor = FALSE
-       ORDER BY p.fecha_pedido DESC,
-                p.id_pedido DESC,
-                d.id_producto`,
+
+       ORDER BY
+         p.fecha_pedido DESC,
+         p.id_pedido DESC,
+         d.id_producto`,
       [Number(req.usuario.id)]
     );
 
@@ -365,28 +488,60 @@ async function consultarPedidos(req, res, campo) {
       if (!mapa.has(fila.id_pedido)) {
         mapa.set(fila.id_pedido, {
           id: fila.id_pedido,
+
           compradorNombre: fila.comprador_nombre,
           compradorCarrera: '',
+
           tienda: `Vende: ${fila.vendedor_nombre}`,
+
           estado: fila.estado,
           total: Number(fila.total),
+
           puntoEntrega: fila.punto_entrega_acordado,
           hora: fila.horario_entrega_acordado,
-          lugarRecoleccion: fila.lugar_recoleccion || 'Por acordar con el vendedor',
+
+          lugarRecoleccion:
+            fila.lugar_recoleccion ||
+            'Por acordar con el vendedor',
+
           metodoPago: fila.metodo_pago || 'Sin elegir',
+
           requiereRepartidor: fila.estado_reparto !== null,
           estadoReparto: fila.estado_reparto,
+
           repartidorId: fila.id_repartidor,
           repartidorAsignado: fila.repartidor_nombre || null,
-          comisionRepartidor: fila.comision_repartidor === null ? 0 : Number(fila.comision_repartidor),
+
+          comisionRepartidor:
+            fila.comision_repartidor === null
+              ? 0
+              : Number(fila.comision_repartidor),
+
           notaCancelacion: '',
-          comentarioEntregaComprador: fila.comentario_entrega_comprador || '',
-          comentarioEntregaVendedor: fila.comentario_entrega_vendedor || '',
-          comentarioEntregaRepartidor: fila.comentario_entrega_repartidor || '',
-          calificacion: fila.calificacion_estrellas === null ? null : {
-            estrellas: Number(fila.calificacion_estrellas),
-            comentario: fila.calificacion_comentario || ''
-          },
+
+          avisosReasignacion:
+            fila.avisos_reasignacion || [],
+
+          comentarioEntregaComprador:
+            fila.comentario_entrega_comprador || '',
+
+          comentarioEntregaVendedor:
+            fila.comentario_entrega_vendedor || '',
+
+          comentarioEntregaRepartidor:
+            fila.comentario_entrega_repartidor || '',
+
+          calificacion:
+            fila.calificacion_estrellas === null
+              ? null
+              : {
+                  estrellas: Number(
+                    fila.calificacion_estrellas
+                  ),
+                  comentario:
+                    fila.calificacion_comentario || ''
+                },
+
           items: []
         });
       }
@@ -421,9 +576,10 @@ export async function obtenerPedidosVendedor(req, res) {
   const permiso = await pool.query(
     `SELECT 1
      FROM public.usuario_roles ur
-     JOIN public.roles r ON r.id_rol = ur.id_rol
+     JOIN public.roles r
+       ON r.id_rol = ur.id_rol
      WHERE ur.id_usuario = $1
-     AND LOWER(r.nombre) = 'vendedor'
+       AND LOWER(r.nombre) = 'vendedor'
      LIMIT 1`,
     [req.usuario.id]
   ).catch(() => null);
@@ -522,16 +678,18 @@ export async function actualizarEstadoPedidoVendedor(req, res) {
     const rol = await pool.query(
       `SELECT 1
        FROM public.usuario_roles ur
-       JOIN public.roles r ON r.id_rol = ur.id_rol
+       JOIN public.roles r
+         ON r.id_rol = ur.id_rol
        WHERE ur.id_usuario = $1
-       AND LOWER(r.nombre) = 'vendedor'
+         AND LOWER(r.nombre) = 'vendedor'
        LIMIT 1`,
       [vendedorId]
     );
 
     if (!rol.rowCount) {
       return res.status(403).json({
-        mensaje: 'Solo un vendedor puede modificar sus pedidos.'
+        mensaje:
+          'Solo un vendedor puede modificar sus pedidos.'
       });
     }
 
@@ -555,9 +713,14 @@ export async function actualizarEstadoPedidoVendedor(req, res) {
          AND id_vendedor = $3
          AND estado = ANY($4::text[])
          AND oculto_por_retiro_vendedor = FALSE
-         AND ($1 = 'Cancelado' OR NOT EXISTS (
-           SELECT 1 FROM public.pedido_repartos rp WHERE rp.id_pedido = $2
-         ))
+         AND (
+           $1 = 'Cancelado'
+           OR NOT EXISTS (
+             SELECT 1
+             FROM public.pedido_repartos rp
+             WHERE rp.id_pedido = $2
+           )
+         )
        RETURNING id_pedido, estado`,
       [
         estadoNuevo,
@@ -580,11 +743,13 @@ export async function actualizarEstadoPedidoVendedor(req, res) {
     });
 
   } catch (error) {
-    console.error('Error actualizando el estado del pedido:', error);
+    console.error(
+      'Error actualizando el estado del pedido:',
+      error
+    );
 
     return res.status(500).json({
-      mensaje:
-        'No se pudo actualizar el pedido.'
+      mensaje: 'No se pudo actualizar el pedido.'
     });
   }
 }
@@ -647,38 +812,87 @@ export async function calificarPedido(req, res) {
   const estrellas = Number(req.body?.estrellas);
   const comentario = req.body?.comentario ?? '';
 
-  if (!Number.isSafeInteger(idComprador) || idComprador <= 0) {
-    return res.status(401).json({ mensaje: 'Debes iniciar sesión para calificar.' });
+  if (
+    !Number.isSafeInteger(idComprador) ||
+    idComprador <= 0
+  ) {
+    return res.status(401).json({
+      mensaje: 'Debes iniciar sesión para calificar.'
+    });
   }
-  if (!Number.isSafeInteger(idPedido) || idPedido <= 0) {
-    return res.status(400).json({ mensaje: 'Pedido inválido.' });
+
+  if (
+    !Number.isSafeInteger(idPedido) ||
+    idPedido <= 0
+  ) {
+    return res.status(400).json({
+      mensaje: 'Pedido inválido.'
+    });
   }
-  if (!Number.isInteger(estrellas) || estrellas < 1 || estrellas > 5 ||
-      typeof comentario !== 'string' || comentario.trim().length > 1000) {
-    return res.status(400).json({ mensaje: 'Selecciona de 1 a 5 estrellas y un comentario de máximo 1000 caracteres.' });
+
+  if (
+    !Number.isInteger(estrellas) ||
+    estrellas < 1 ||
+    estrellas > 5 ||
+    typeof comentario !== 'string' ||
+    comentario.trim().length > 1000
+  ) {
+    return res.status(400).json({
+      mensaje:
+        'Selecciona de 1 a 5 estrellas y un comentario de máximo 1000 caracteres.'
+    });
   }
 
   try {
     const resultado = await pool.query(
       `INSERT INTO public.calificaciones_pedidos
-         (id_pedido, id_comprador, estrellas, comentario)
-       SELECT p.id_pedido, p.id_comprador, $3::smallint, $4::text
+         (
+           id_pedido,
+           id_comprador,
+           estrellas,
+           comentario
+         )
+       SELECT
+         p.id_pedido,
+         p.id_comprador,
+         $3::smallint,
+         $4::text
        FROM public.pedidos p
-       WHERE p.id_pedido = $1 AND p.id_comprador = $2 AND p.estado = 'Entregado'
+       WHERE p.id_pedido = $1
+         AND p.id_comprador = $2
+         AND p.estado = 'Entregado'
          AND p.oculto_por_retiro_vendedor = FALSE
        ON CONFLICT (id_pedido) DO NOTHING
-       RETURNING id_pedido, estrellas, comentario, fecha_calificacion`,
-      [idPedido, idComprador, estrellas, comentario.trim()]
+       RETURNING
+         id_pedido,
+         estrellas,
+         comentario,
+         fecha_calificacion`,
+      [
+        idPedido,
+        idComprador,
+        estrellas,
+        comentario.trim()
+      ]
     );
+
     if (!resultado.rowCount) {
-      return res.status(409).json({ mensaje: 'Solo puedes calificar una vez un pedido propio que ya fue entregado.' });
+      return res.status(409).json({
+        mensaje:
+          'Solo puedes calificar una vez un pedido propio que ya fue entregado.'
+      });
     }
+
     return res.status(201).json({
       mensaje: 'Calificación guardada correctamente.',
       calificacion: resultado.rows[0]
     });
+
   } catch (error) {
     console.error('Error guardando calificación:', error);
-    return res.status(500).json({ mensaje: 'No se pudo guardar la calificación.' });
+
+    return res.status(500).json({
+      mensaje: 'No se pudo guardar la calificación.'
+    });
   }
 }

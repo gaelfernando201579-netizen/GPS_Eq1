@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -6,12 +7,145 @@
   color-scheme: light;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   min-height: 100%;
   color: #111827;
   background-color: #f9fafb;
 }
 
-input, select, textarea {
+input,
+select,
+textarea {
   color-scheme: light;
+}
+
+/* ========================================
+   NOTIFICACIONES CAMPY
+======================================== */
+
+@keyframes campy-notificacion-entrada {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Avisos dentro de formularios y paneles */
+
+:where(
+  p[role="alert"],
+  div[role="alert"],
+  p[role="status"],
+  div[role="status"]
+):not(.campy-toast) {
+  position: relative;
+  animation: campy-notificacion-entrada 0.3s ease-out;
+  padding: 14px 18px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+/* Mensajes de error */
+
+:where(
+  p[role="alert"],
+  div[role="alert"]
+):not(.campy-toast) {
+  border: 1px solid #fecaca;
+  border-left: 4px solid #ef4444;
+  background: linear-gradient(
+    135deg,
+    #fff1f2 0%,
+    #fff7f7 100%
+  );
+  color: #991b1b;
+  box-shadow:
+    0 4px 16px rgba(239, 68, 68, 0.06);
+}
+
+/* Mensajes exitosos */
+
+:where(
+  p[role="status"],
+  div[role="status"]
+):not(.campy-toast) {
+  border: 1px solid #bbf7d0;
+  border-left: 4px solid #22c55e;
+  background: linear-gradient(
+    135deg,
+    #f0fdf4 0%,
+    #f7fff9 100%
+  );
+  color: #166534;
+  box-shadow:
+    0 4px 16px rgba(34, 197, 94, 0.06);
+}
+
+/* Evitar conflictos con las notificaciones flotantes */
+
+.campy-toast-contenedor .campy-toast {
+  border-left-width: 1px;
+  background: #ffffff;
+  color: #111827;
+}
+
+.campy-toast-contenedor .campy-toast-contenido {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  animation: none;
+}
+
+.campy-toast-contenedor .campy-toast-titulo {
+  color: #111827;
+  font-weight: 700;
+}
+
+.campy-toast-contenedor .campy-toast-mensaje {
+  color: #64748b;
+  font-weight: 400;
+}
+
+/* Accesibilidad y movimiento reducido */
+
+@media (prefers-reduced-motion: reduce) {
+  :where(
+    p[role="alert"],
+    div[role="alert"],
+    p[role="status"],
+    div[role="status"]
+  ):not(.campy-toast) {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Adaptación a dispositivos móviles */
+
+@media (max-width: 480px) {
+  :where(
+    p[role="alert"],
+    div[role="alert"],
+    p[role="status"],
+    div[role="status"]
+  ):not(.campy-toast) {
+    padding: 12px 14px;
+    border-radius: 13px;
+    font-size: 12px;
+  }
 }

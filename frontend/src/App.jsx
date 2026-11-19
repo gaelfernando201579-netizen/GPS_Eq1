@@ -11,7 +11,114 @@ import { supabase } from './config/supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+
+const ESTILOS_NOTIFICACIONES = `
+  @keyframes campyToastEntrada {
+    from { opacity: 0; transform: translate3d(18px, -12px, 0) scale(.97); }
+    to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  }
+  @keyframes campyToastTiempo {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
+  }
+  .campy-toast-contenedor {
+    position: fixed; top: 22px; right: 22px; z-index: 99999;
+    display: flex; flex-direction: column; gap: 12px;
+    width: min(410px, calc(100vw - 32px));
+    pointer-events: none;
+  }
+  div.campy-toast {
+    --campy-acento: #2563eb;
+    --campy-fondo-icono: #eff6ff;
+    box-sizing: border-box; display: flex; gap: 13px; align-items: flex-start;
+    position: relative; padding: 16px 15px 18px;
+    border: 1px solid #e5eaf1; border-radius: 18px;
+    background: #fff; color: #0f172a;
+    box-shadow: 0 16px 46px rgba(15, 23, 42, .14), 0 2px 8px rgba(15, 23, 42, .04);
+    overflow: hidden; pointer-events: auto;
+    animation: campyToastEntrada .32s cubic-bezier(.2,.8,.2,1) both;
+  }
+  .campy-toast-exito { --campy-acento: #16a34a; --campy-fondo-icono: #ecfdf3; }
+  .campy-toast-error { --campy-acento: #dc2626; --campy-fondo-icono: #fef2f2; }
+  .campy-toast-info { --campy-acento: #2563eb; --campy-fondo-icono: #eff6ff; }
+  .campy-toast-aviso { --campy-acento: #d97706; --campy-fondo-icono: #fffbeb; }
+  .campy-toast-icono {
+    width: 43px; height: 43px; border-radius: 13px; flex: 0 0 43px;
+    display: grid; place-items: center;
+    background: var(--campy-fondo-icono); color: var(--campy-acento);
+  }
+  .campy-toast-icono svg { width: 23px; height: 23px; }
+  .campy-toast-contenido { flex: 1; min-width: 0; }
+  .campy-toast-titulo { margin: 1px 0 5px; font-size: 14px; font-weight: 750; line-height: 1.35; color: #0f172a; }
+  .campy-toast-mensaje { margin: 0; font-size: 13px; line-height: 1.55; color: #475569; overflow-wrap: anywhere; }
+  .campy-toast-momento { display: block; margin-top: 7px; font-size: 11px; color: #94a3b8; }
+  .campy-toast-cerrar {
+    flex: 0 0 24px; display: grid; place-items: center;
+    height: 24px; width: 24px; padding: 0; margin: -4px -3px 0 0;
+    border: none; border-radius: 7px; background: transparent;
+    color: #94a3b8; cursor: pointer; transition: background .15s, color .15s;
+  }
+  .campy-toast-cerrar:hover { background: #f1f5f9; color: #334155; }
+  .campy-toast-cerrar:focus-visible { outline: 2px solid var(--campy-acento); outline-offset: 2px; }
+  .campy-toast-cerrar svg { height: 17px; width: 17px; }
+  .campy-toast-barra {
+    position: absolute; bottom: 0; left: 0; width: 100%; height: 3px;
+    background: var(--campy-acento); transform-origin: left;
+    animation: campyToastTiempo 5s linear forwards;
+  }
+  @media (max-width: 480px) {
+    .campy-toast-contenedor { top: 12px; left: 12px; right: 12px; width: auto; }
+    .campy-toast { padding: 14px 13px 17px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .campy-toast, .campy-toast-barra { animation: none; }
+  }
+`;
+
+function IconoNotificacion({ tipo }) {
+  const iconos = {
+    exito: <><path d="M20 6 9 17l-5-5" /></>,
+    error: <><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 17h.01" /></>,
+    info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>,
+    aviso: <><path d="M10.3 3.9 2.5 17.4a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>
+  };
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{iconos[tipo] || iconos.info}</svg>;
+}
+
 function App() {
+  const [notificaciones, setNotificaciones] = useState([]);
+  const contadorNotificaciones = useRef(0);
+  const temporizadores = useRef(new Map());
+
+  const cerrarNotificacion = useCallback((id) => {
+    clearTimeout(temporizadores.current.get(id));
+    temporizadores.current.delete(id);
+    setNotificaciones((actuales) => actuales.filter((n) => n.id !== id));
+  }, []);
+
+  const mostrarNotificacion = useCallback((tipo, titulo, mensaje) => {
+    const id = ++contadorNotificaciones.current;
+    setNotificaciones((actuales) => [...actuales.slice(-2), { id, tipo, titulo, mensaje }]);
+    const temporizador = setTimeout(() => cerrarNotificacion(id), 5000);
+    temporizadores.current.set(id, temporizador);
+  }, [cerrarNotificacion]);
+
+  useEffect(() => () => {
+    temporizadores.current.forEach((temporizador) => clearTimeout(temporizador));
+    temporizadores.current.clear();
+  }, []);
+
+  const conNotificacion = (accion, titulo, mensaje) => async (...args) => {
+    try {
+      const resultado = await accion(...args);
+      mostrarNotificacion('exito', titulo, mensaje);
+      return resultado;
+    } catch (error) {
+      mostrarNotificacion('error', 'No se pudo completar la acción', error.message || 'Inténtalo nuevamente.');
+      throw error;
+    }
+  };
+
   const [pantallaActual, setPantallaActual] = useState('login');
   const [registroExitoso, setRegistroExitoso] = useState(false);
   const [tokenAuth, setTokenAuth] = useState(localStorage.getItem('campy_token') || null);
@@ -498,6 +605,12 @@ function App() {
     return datos.pedido;
   };
 
+  const cancelarEntregaRepartidor = async (pedidoId, motivo) => {
+    const resultado = await solicitarRepartoAPI(`/${pedidoId}/cancelar-asignacion`, 'POST', { motivo });
+    await refrescarRepartos();
+    return resultado;
+  };
+
   const tomarPedidoRepartidor = async (pedidoId) => {
     const resultado = await solicitarRepartoAPI(`/${pedidoId}/aceptar`, 'PATCH');
     await refrescarRepartos();
@@ -506,6 +619,34 @@ function App() {
 
   return (
     <>
+      <style>{ESTILOS_NOTIFICACIONES}</style>
+      <div className="campy-toast-contenedor" aria-label="Notificaciones de CAMPY">
+        {notificaciones.map((notificacion) => (
+          <div
+            key={notificacion.id}
+            className={`campy-toast campy-toast-${notificacion.tipo}`}
+            role={notificacion.tipo === 'error' ? 'alert' : 'status'}
+          >
+            <span className="campy-toast-icono" aria-hidden="true">
+              <IconoNotificacion tipo={notificacion.tipo} />
+            </span>
+            <div className="campy-toast-contenido">
+              <p className="campy-toast-titulo">{notificacion.titulo}</p>
+              <p className="campy-toast-mensaje">{notificacion.mensaje}</p>
+              <span className="campy-toast-momento">CAMPY · Ahora</span>
+            </div>
+            <button
+              type="button"
+              className="campy-toast-cerrar"
+              aria-label="Cerrar notificación"
+              onClick={() => cerrarNotificacion(notificacion.id)}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+            </button>
+            <span className="campy-toast-barra" aria-hidden="true" />
+          </div>
+        ))}
+      </div>
       {pantallaActual === 'login' && (
         <CampyLogin alIngresar={manejarIngreso} irARegistro={() => setPantallaActual('registro')} registroExitoso={registroExitoso} />
       )}
@@ -525,7 +666,7 @@ function App() {
           recargarProductos={() => setRecargaCatalogo((n) => n + 1)}
           carrito={carritoGlobal}
           setCarrito={setCarritoGlobal}
-          irAPedidos={procesarCompra}
+          irAPedidos={conNotificacion(procesarCompra, 'Pedido realizado', 'Tu pedido fue enviado correctamente al vendedor.')}
           irAMisPedidos={() => setPantallaActual('pedidos')}
           irAPerfil={() => setPantallaActual('perfil')}
         />
@@ -540,7 +681,7 @@ function App() {
           errorPedidos={errorPedidos}
           actualizandoPedidos={actualizandoPedidos}
           refrescarPedidos={refrescarPedidos}
-          cambiarEstadoPedido={confirmarRecepcionPedido}
+          cambiarEstadoPedido={conNotificacion(confirmarRecepcionPedido, 'Recepción confirmada', 'Tu pedido se marcó como entregado.')}
           onCalificacionGuardada={() => setRecargaCatalogo(n => n + 1)}
           irAInicio={() => setPantallaActual('home')}
           irAPerfil={() => setPantallaActual('perfil')}
@@ -551,10 +692,10 @@ function App() {
         <MiPerfil
           usuario={usuarioActual}
           setUsuario={setUsuarioActual}
-          registrarComoVendedor={registrarComoVendedor}
+          registrarComoVendedor={conNotificacion(registrarComoVendedor, 'Solicitud enviada', 'Tu solicitud de vendedor se registró correctamente.')}
           solicitudVendedor={solicitudVendedor}
           irAPanelModerador={() => setPantallaActual('moderador')}
-          registrarComoRepartidor={registrarComoRepartidor}
+          registrarComoRepartidor={conNotificacion(registrarComoRepartidor, 'Solicitud enviada', 'Tu solicitud de repartidor se registró correctamente.')}
           token={tokenAuth}
           irAPanelVendedor={() => setPantallaActual('vendedor')}
           irAPanelRepartidor={() => setPantallaActual('repartidor')}
@@ -579,7 +720,7 @@ function App() {
           productos={productosCatalogo}
           cargandoProductos={cargandoProductos}
           errorProductos={errorProductos}
-          eliminarPublicacion={eliminarProducto}
+          eliminarPublicacion={conNotificacion(eliminarProducto, 'Publicación retirada', 'La publicación fue retirada del catálogo correctamente.')}
           alCambiarCatalogo={() => setRecargaCatalogo(n => n + 1)}
           irAPerfil={() => setPantallaActual('perfil')}
           irAPanelVendedor={() => setPantallaActual('vendedor')}
@@ -606,17 +747,17 @@ function App() {
           misProductos={productosCatalogo.filter(
             (p) => Number(p.id_vendedor) === Number(usuarioActual.id_usuario)
           )}
-          agregarNuevoProducto={agregarNuevoProducto}
-          editarProducto={editarProducto}
-          eliminarProducto={eliminarProducto}
+          agregarNuevoProducto={conNotificacion(agregarNuevoProducto, 'Producto agregado', 'Tu producto ya se encuentra registrado.')}
+          editarProducto={conNotificacion(editarProducto, 'Producto actualizado', 'Los cambios se guardaron correctamente.')}
+          eliminarProducto={conNotificacion(eliminarProducto, 'Producto retirado', 'El producto fue retirado correctamente.')}
           pedidosVendedor={pedidosParaVendedor}
           cargandoPedidos={cargandoPedidos}
           errorPedidos={errorPedidos}
           actualizandoPedidos={actualizandoPedidos}
           refrescarPedidos={refrescarPedidos}
-          configurarAceptacionPedido={configurarAceptacionPedido}
-          cambiarEstadoPedidoVendedor={cambiarEstadoPedidoVendedor}
-          liberarReparto={liberarReparto}
+          configurarAceptacionPedido={conNotificacion(configurarAceptacionPedido, 'Pedido aceptado', 'La configuración de entrega se guardó correctamente.')}
+          cambiarEstadoPedidoVendedor={conNotificacion(cambiarEstadoPedidoVendedor, 'Estado del pedido actualizado', 'El cambio se guardó correctamente y ya puedes consultar el estado del pedido.')}
+          liberarReparto={conNotificacion(liberarReparto, 'Reparto actualizado', 'Se registró el cambio en el reparto.')}
           volverAModoCliente={() => setPantallaActual('home')}
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');
@@ -636,8 +777,9 @@ function App() {
           pedidos={pedidosRepartidor}
           errorPedidos={errorRepartos}
           refrescarPedidos={refrescarRepartos}
-          tomarPedidoRepartidor={tomarPedidoRepartidor}
-          cambiarEstadoPedido={cambiarEstadoPedido}
+          cancelarEntregaRepartidor={conNotificacion(cancelarEntregaRepartidor, 'Entrega liberada', 'El pedido volvió a estar disponible para otros repartidores.')}
+          tomarPedidoRepartidor={conNotificacion(tomarPedidoRepartidor, 'Pedido asignado', 'Has aceptado el reparto correctamente.')}
+          cambiarEstadoPedido={conNotificacion(cambiarEstadoPedido, 'Reparto actualizado', 'El avance de la entrega se registró correctamente.')}
           volverAModoCliente={() => setPantallaActual('home')}
           cerrarSesion={() => {
             localStorage.removeItem('campy_token');

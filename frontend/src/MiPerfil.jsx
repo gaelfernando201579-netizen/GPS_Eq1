@@ -14,6 +14,29 @@ import {
 const DIAS_SEMANA = ['LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 const BLOQUES_HORA = Array.from({length:11},(_,i)=>`${String(i+7).padStart(2,'0')}-${String(i+8).padStart(2,'0')}`);
 
+const REGLAS_PASSWORD_PERFIL = [
+  { texto: 'Mínimo 8 caracteres', cumple: valor => valor.length >= 8 },
+  { texto: 'Máximo 10 caracteres', cumple: valor => valor.length <= 10 },
+  { texto: 'Una mayúscula', cumple: valor => /[A-Z]/.test(valor) },
+  { texto: 'Una minúscula', cumple: valor => /[a-z]/.test(valor) },
+  { texto: 'Un número', cumple: valor => /[0-9]/.test(valor) },
+  { texto: 'Un símbolo (! @ # $ %)', cumple: valor => /[^A-Za-z0-9\s]/.test(valor) },
+  { texto: 'Sin espacios', cumple: valor => !/\s/.test(valor) }
+];
+
+function OjoPasswordPerfil({ visible }) {
+  return visible ? (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 3l18 18" /><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.9 5.1A10.5 10.5 0 0 1 12 5c5 0 9.3 4.2 10 7-.2 1.1-1.4 3-3 4.4" /><path d="M6.6 6.6C4.4 8 2.6 10 2 12c.7 2.8 5 7 10 7 1.4 0 2.7-.3 4-.8" />
+    </svg>
+  ) : (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7Z" /><circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+
 const MiPerfil = ({
   usuario,
   setUsuario,
@@ -31,6 +54,64 @@ const MiPerfil = ({
   const [modalActivo, setModalActivo] = useState(null);
   const [solicitudRepartidor, setSolicitudRepartidor] = useState(null);
   const [errorRepartidor, setErrorRepartidor] = useState('');
+  const [passwordActual, setPasswordActual] = useState('');
+  const [nuevaPassword, setNuevaPassword] = useState('');
+  const [confirmarPasswordNueva, setConfirmarPasswordNueva] = useState('');
+  const [mostrarPasswordActual, setMostrarPasswordActual] = useState(false);
+  const [mostrarPasswordNueva, setMostrarPasswordNueva] = useState(false);
+  const [mostrarConfirmacionNueva, setMostrarConfirmacionNueva] = useState(false);
+  const [errorPasswordPerfil, setErrorPasswordPerfil] = useState('');
+  const [exitoPasswordPerfil, setExitoPasswordPerfil] = useState('');
+  const [guardandoPasswordPerfil, setGuardandoPasswordPerfil] = useState(false);
+
+  const abrirCambioPassword = () => {
+    setPasswordActual('');
+    setNuevaPassword('');
+    setConfirmarPasswordNueva('');
+    setErrorPasswordPerfil('');
+    setExitoPasswordPerfil('');
+    setMostrarPasswordActual(false);
+    setMostrarPasswordNueva(false);
+    setMostrarConfirmacionNueva(false);
+    setModalActivo('cambiarPassword');
+  };
+
+  const guardarCambioPassword = async (e) => {
+    e.preventDefault();
+    setErrorPasswordPerfil('');
+    setExitoPasswordPerfil('');
+    if (!passwordActual) return setErrorPasswordPerfil('Ingresa tu contraseña actual.');
+    if (!REGLAS_PASSWORD_PERFIL.every(regla => regla.cumple(nuevaPassword))) {
+      return setErrorPasswordPerfil('La nueva contraseña no cumple todos los requisitos.');
+    }
+    if (nuevaPassword !== confirmarPasswordNueva) {
+      return setErrorPasswordPerfil('Las contraseñas nuevas no coinciden.');
+    }
+    if (passwordActual === nuevaPassword) {
+      return setErrorPasswordPerfil('La nueva contraseña debe ser diferente de la actual.');
+    }
+    setGuardandoPasswordPerfil(true);
+    try {
+      const sesion = localStorage.getItem('campy_token') || token;
+      if (!sesion) throw new Error('Inicia sesión nuevamente para cambiar tu contraseña.');
+      const respuesta = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/cambiar-password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sesion}` },
+        body: JSON.stringify({ passwordActual, nuevaPassword, confirmarPassword: confirmarPasswordNueva })
+      });
+      const datos = await respuesta.json().catch(() => ({}));
+      if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo actualizar la contraseña.');
+      setPasswordActual('');
+      setNuevaPassword('');
+      setConfirmarPasswordNueva('');
+      setExitoPasswordPerfil(datos.mensaje || 'Contraseña actualizada correctamente.');
+    } catch (error) {
+      setErrorPasswordPerfil(error.message || 'No se pudo actualizar la contraseña.');
+    } finally {
+      setGuardandoPasswordPerfil(false);
+    }
+  };
+
   React.useEffect(() => {
     if (!token) return;
     let activo=true;
@@ -291,6 +372,14 @@ React.useEffect(() => {
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center text-lg">👤</div>
                 <span className="font-bold text-gray-700 text-sm">Editar Perfil</span>
+              </div>
+              <span className="text-gray-300 font-bold">➔</span>
+            </button>
+
+            <button onClick={abrirCambioPassword} className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-50">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-violet-50 text-violet-700 flex items-center justify-center text-lg">🔒</div>
+                <span className="font-bold text-gray-700 text-sm">Cambiar contraseña</span>
               </div>
               <span className="text-gray-300 font-bold">➔</span>
             </button>
@@ -653,6 +742,75 @@ React.useEffect(() => {
               <input type="text" value={carreraEdit} onChange={(e) => setCarreraEdit(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium text-gray-600 outline-none focus:border-blue-500" />
               <input type="tel" value={telefonoEdit} onChange={(e) => setTelefonoEdit(e.target.value)} placeholder="Número de teléfono" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-blue-500" />
               <button type="submit" className="w-full bg-[#0A3895] text-white font-bold py-4 rounded-xl shadow-lg mt-2 active:scale-95 transition-transform">Guardar Cambios</button>
+            </form>
+          </div>
+        )}
+
+        {/* MODAL: CAMBIAR CONTRASEÑA */}
+        {modalActivo === 'cambiarPassword' && (
+          <div className="absolute bottom-0 left-0 w-full max-h-[90%] overflow-y-auto bg-white rounded-t-[30px] p-6 pb-10 z-50 animate-[slideUp_0.3s_ease-out]">
+            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-4"></div>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-black text-[#0A3895]">Cambiar contraseña</h2>
+              <button type="button" onClick={() => setModalActivo(null)} aria-label="Cerrar" className="text-gray-500 font-bold text-sm">✕</button>
+            </div>
+            <p className="text-xs text-gray-600 mb-4">Confirma tu contraseña actual y escribe una nueva que cumpla los requisitos.</p>
+            <form onSubmit={guardarCambioPassword} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Contraseña actual</label>
+                <div className="relative">
+                  <input type={mostrarPasswordActual ? 'text' : 'password'} value={passwordActual}
+                    onChange={e => setPasswordActual(e.target.value)} autoComplete="current-password"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 pr-12 text-sm text-gray-800" required />
+                  <button type="button" onClick={() => setMostrarPasswordActual(v => !v)}
+                    aria-label={mostrarPasswordActual ? 'Ocultar contraseña actual' : 'Ver contraseña actual'}
+                    className="absolute inset-y-0 right-2 px-2 text-gray-500"><OjoPasswordPerfil visible={mostrarPasswordActual} /></button>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3.5">
+                <p className="text-xs font-black text-[#0A3895] mb-2">Tu nueva contraseña debe cumplir con:</p>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-2">
+                  {REGLAS_PASSWORD_PERFIL.map(regla => {
+                    const cumple = nuevaPassword.length > 0 && regla.cumple(nuevaPassword);
+                    return <div key={regla.texto} className={`flex items-center gap-1.5 text-[11px] ${cumple ? 'text-green-700' : 'text-gray-600'}`}>
+                      <span aria-hidden="true" className="font-bold">{cumple ? '✓' : '○'}</span>{regla.texto}
+                    </div>;
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Nueva contraseña</label>
+                <div className="relative">
+                  <input type={mostrarPasswordNueva ? 'text' : 'password'} value={nuevaPassword}
+                    onChange={e => setNuevaPassword(e.target.value)} autoComplete="new-password"
+                    aria-describedby="cambio-password-aviso"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 pr-12 text-sm text-gray-800" required />
+                  <button type="button" onClick={() => setMostrarPasswordNueva(v => !v)}
+                    aria-label={mostrarPasswordNueva ? 'Ocultar nueva contraseña' : 'Ver nueva contraseña'}
+                    className="absolute inset-y-0 right-2 px-2 text-gray-500"><OjoPasswordPerfil visible={mostrarPasswordNueva} /></button>
+                </div>
+                {nuevaPassword.length > 10 && <p id="cambio-password-aviso" className="text-xs text-red-700 mt-1" role="alert">Máximo 10 caracteres.</p>}
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Confirmar nueva contraseña</label>
+                <div className="relative">
+                  <input type={mostrarConfirmacionNueva ? 'text' : 'password'} value={confirmarPasswordNueva}
+                    onChange={e => setConfirmarPasswordNueva(e.target.value)} autoComplete="new-password"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 pr-12 text-sm text-gray-800" required />
+                  <button type="button" onClick={() => setMostrarConfirmacionNueva(v => !v)}
+                    aria-label={mostrarConfirmacionNueva ? 'Ocultar confirmación' : 'Ver confirmación'}
+                    className="absolute inset-y-0 right-2 px-2 text-gray-500"><OjoPasswordPerfil visible={mostrarConfirmacionNueva} /></button>
+                </div>
+                {!!confirmarPasswordNueva && <p className={`text-xs mt-1 ${confirmarPasswordNueva === nuevaPassword ? 'text-green-700' : 'text-amber-700'}`}>
+                  {confirmarPasswordNueva === nuevaPassword ? '✓ Las contraseñas coinciden.' : 'Las contraseñas no coinciden.'}
+                </p>}
+              </div>
+              {errorPasswordPerfil && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{errorPasswordPerfil}</div>}
+              {exitoPasswordPerfil && <div role="status" className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">{exitoPasswordPerfil}</div>}
+              <button type="submit" disabled={guardandoPasswordPerfil || !!exitoPasswordPerfil}
+                className="w-full bg-[#0A3895] text-white font-bold py-3.5 rounded-xl disabled:opacity-50">
+                {guardandoPasswordPerfil ? 'Actualizando...' : 'Actualizar contraseña'}
+              </button>
             </form>
           </div>
         )}
