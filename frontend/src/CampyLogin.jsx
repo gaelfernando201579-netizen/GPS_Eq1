@@ -202,11 +202,22 @@ const CampyLogin = ({ alIngresar }) => {
 
     try {
       const providerId = proveedor.toLowerCase();
+      try {
+        localStorage.setItem('campy_oauth_pendiente', '1');
+      } catch (_) {}
+
+      const esCapacitor =
+        Boolean(window.CampyNative) ||
+        window.Capacitor?.isNativePlatform?.() ||
+        window.location.protocol === 'capacitor:';
+      const redirectUrl = esCapacitor
+        ? 'com.itoaxaca.campy://login-callback'
+        : window.location.origin;
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: providerId,
         options: {
-          redirectTo: window.location.origin
+          redirectTo: redirectUrl
         }
       });
 

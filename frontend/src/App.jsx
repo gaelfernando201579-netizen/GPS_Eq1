@@ -11,6 +11,71 @@ import { supabase } from './config/supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+const USUARIO_VACIO = {
+  nombre: '',
+  correo: '',
+  carrera: '',
+  esVendedor: false,
+  datosVendedor: null,
+  esRepartidor: false,
+  datosRepartidor: null,
+  esModerador: false
+};
+
+function leerUsuarioPersistido() {
+  try {
+    if (localStorage.getItem('campy_sesion_activa_v3') !== 'true') {
+      return USUARIO_VACIO;
+    }
+    const guardado = localStorage.getItem('campy_usuario');
+    if (!guardado) return USUARIO_VACIO;
+    const parseado = JSON.parse(guardado);
+    if (!parseado || typeof parseado.correo !== 'string' || !parseado.correo.trim()) {
+      return USUARIO_VACIO;
+    }
+    return { ...USUARIO_VACIO, ...parseado };
+  } catch {
+    return USUARIO_VACIO;
+  }
+}
+
+function tieneSesionValidaGuardada() {
+  try {
+    const activa = localStorage.getItem('campy_sesion_activa_v3') === 'true';
+    const token = localStorage.getItem('campy_token');
+    const usuario = leerUsuarioPersistido();
+    return Boolean(activa && token && usuario.correo);
+  } catch {
+    return false;
+  }
+}
+
+function obtenerPantallaInicial() {
+  if (!tieneSesionValidaGuardada()) {
+    try {
+      localStorage.removeItem('campy_token');
+      localStorage.removeItem('campy_usuario');
+      localStorage.removeItem('campy_pantalla');
+    } catch (_) {}
+    return 'login';
+  }
+  const usuario = leerUsuarioPersistido();
+  const pantallaGuardada = localStorage.getItem('campy_pantalla');
+  const pantallasValidas = ['home', 'pedidos', 'perfil', 'vendedor', 'repartidor', 'moderador'];
+  if (pantallasValidas.includes(pantallaGuardada)) {
+    if (pantallaGuardada === 'moderador' && !usuario.esModerador) return 'home';
+    if (pantallaGuardada === 'vendedor' && !usuario.esVendedor) return 'home';
+    if (pantallaGuardada === 'repartidor' && !usuario.esRepartidor) return 'home';
+    return pantallaGuardada;
+  }
+  return usuario.esModerador
+    ? 'moderador'
+    : usuario.esVendedor
+      ? 'vendedor'
+      : usuario.esRepartidor
+        ? 'repartidor'
+        : 'home';
+}
 
 const ESTILOS_NOTIFICACIONES = `
   @keyframes campyToastEntrada {
@@ -97,6 +162,16 @@ function App() {
   }, []);
 
   const mostrarNotificacion = useCallback((tipo, titulo, mensaje) => {
+    // 1. Notificación nativa en la barra de estado de Android
+    try {
+      if (typeof window !== 'undefined' && window.CampyNative?.mostrarNotificacion) {
+        window.CampyNative.mostrarNotificacion(String(titulo), String(mensaje));
+      } else if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification(String(titulo), { body: String(mensaje) });
+      }
+    } catch (_) {}
+
+    // 2. Toast visual dentro de la app
     const id = ++contadorNotificaciones.current;
     setNotificaciones((actuales) => [...actuales.slice(-2), { id, tipo, titulo, mensaje }]);
     const temporizador = setTimeout(() => cerrarNotificacion(id), 5000);
@@ -119,20 +194,13 @@ function App() {
     }
   };
 
-  const [pantallaActual, setPantallaActual] = useState('login');
+  const [pantallaActual, setPantallaActual] = useState(obtenerPantallaInicial);
   const [registroExitoso, setRegistroExitoso] = useState(false);
-  const [tokenAuth, setTokenAuth] = useState(localStorage.getItem('campy_token') || null);
+  const [tokenAuth, setTokenAuth] = useState(() =>
+    tieneSesionValidaGuardada() ? localStorage.getItem('campy_token') : null
+  );
   const [solicitudVendedor, setSolicitudVendedor] = useState(null);
-  const [usuarioActual, setUsuarioActual] = useState({
-    nombre: '',
-    correo: '',
-    carrera: '',
-    esVendedor: false,
-    datosVendedor: null,
-    esRepartidor: false,
-    datosRepartidor: null,
-    esModerador: false
-  });
+  const [usuarioActual, setUsuarioActual] = useState(leerUsuarioPersistido);
 
   const [productosCatalogo, setProductosCatalogo] = useState([]);
   const [cargandoProductos, setCargandoProductos] = useState(true);
@@ -151,24 +219,140 @@ function App() {
     consultaPedidosRef.current?.(true);
   }, []);
 
+  // Referencias para detectar cambios en segundo plano y disparar notificaciones por rol
+  const estadosPedidosClienteRef = useRef(null);
+  const estadosPedidosVendedorRef = useRef(null);
+  const repartosDisponiblesIdsRef = useRef(null);
+  const estadoSolicitudVendedorRef = useRef(undefined);
+  const rolVendedorRef = useRef(undefined);
+  const rolRepartidorRef = useRef(undefined);
+  const solicitudesModeradorRef = useRef(null);
+  const productosCatalogoIdsRef = useRef(null);
+  const misProductosIdsRef = useRef(null);
+
+  // Persistir usuario y pantalla activa mientras exista sesión válida
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        cargarUsuarioOAuth(session.user);
-      }
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        cargarUsuarioOAuth(session.user);
-      } else if (event === 'SIGNED_OUT') {
-        setPantallaActual('login');
-      }
-    });
-    return () => subscription.unsubscribe();
+    if (tokenAuth && usuarioActual.correo) {
+      try {
+        localStorage.setItem('campy_usuario', JSON.stringify(usuarioActual));
+      } catch (_) {}
+    }
+  }, [usuarioActual, tokenAuth]);
+
+  useEffect(() => {
+    if (tokenAuth && usuarioActual.correo && pantallaActual !== 'login' && pantallaActual !== 'registro') {
+      try {
+        localStorage.setItem('campy_pantalla', pantallaActual);
+      } catch (_) {}
+    }
+  }, [pantallaActual, tokenAuth, usuarioActual.correo]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
   }, []);
-  const cargarUsuarioOAuth = (user) => {
-    const nombre = user.user_metadata?.full_name || user.user_metadata?.name || user.email.split('@')[0];
-    const correo = user.email;
+
+  const manejarIngreso = useCallback((datosUsuario, token = null) => {
+    estadosPedidosClienteRef.current = null;
+    estadosPedidosVendedorRef.current = null;
+    repartosDisponiblesIdsRef.current = null;
+    estadoSolicitudVendedorRef.current = undefined;
+    rolVendedorRef.current = datosUsuario?.esVendedor === true;
+    rolRepartidorRef.current = datosUsuario?.esRepartidor === true;
+    solicitudesModeradorRef.current = null;
+    misProductosIdsRef.current = null;
+
+    if (token) {
+      localStorage.setItem('campy_token', token);
+      localStorage.setItem('campy_sesion_activa_v3', 'true');
+      setTokenAuth(token);
+    }
+    const nuevoUsuario = {
+      nombre: datosUsuario?.nombre || '',
+      correo: datosUsuario?.correo || '',
+      carrera: datosUsuario?.carrera || '',
+      id_usuario: datosUsuario?.id_usuario,
+      esVendedor: datosUsuario?.esVendedor === true,
+      datosVendedor: null,
+      esRepartidor: datosUsuario?.esRepartidor === true,
+      esModerador: datosUsuario?.esModerador === true,
+      datosRepartidor: null
+    };
+    if (datosUsuario) {
+      setUsuarioActual(nuevoUsuario);
+      try {
+        localStorage.setItem('campy_usuario', JSON.stringify(nuevoUsuario));
+        localStorage.setItem('campy_sesion_activa_v3', 'true');
+      } catch (_) {}
+    }
+    setSolicitudVendedor(null);
+    const pantallaDestino =
+      datosUsuario?.esModerador === true
+        ? 'moderador'
+        : datosUsuario?.esVendedor === true
+          ? 'vendedor'
+          : datosUsuario?.esRepartidor === true
+            ? 'repartidor'
+            : 'home';
+    setPantallaActual(pantallaDestino);
+    try {
+      localStorage.setItem('campy_pantalla', pantallaDestino);
+    } catch (_) {}
+    setRecargaCatalogo((n) => n + 1);
+  }, []);
+
+  const cargarUsuarioOAuth = useCallback(async (user) => {
+    if (!user?.email) return;
+    const nombre = (user.user_metadata?.full_name || user.user_metadata?.name || user.email.split('@')[0] || 'Estudiante ITO').slice(0, 120);
+    const correo = user.email.trim().toLowerCase();
+    const carrera = 'Ingeniería en Sistemas Computacionales';
+    try {
+      localStorage.removeItem('campy_oauth_pendiente');
+    } catch (_) {}
+
+    // Sincronizar o iniciar sesión con el backend para obtener un JWT real y roles de Supabase
+    const passOAuth = 'Campy@2026';
+    try {
+      let respLogin = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ correo, password: passOAuth })
+      });
+
+      if (!respLogin.ok) {
+        await fetch(`${API_URL}/api/auth/registro`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nombre: nombre.length >= 3 ? nombre : `${nombre} ITO`,
+            correo,
+            telefono: '9511234567',
+            password: passOAuth,
+            carrera
+          })
+        }).catch(() => {});
+
+        respLogin = await fetch(`${API_URL}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ correo, password: passOAuth })
+        });
+      }
+
+      if (respLogin.ok) {
+        const datos = await respLogin.json().catch(() => ({}));
+        if (datos?.token) {
+          manejarIngreso(
+            datos.usuario || { nombre, correo, carrera },
+            datos.token
+          );
+          mostrarNotificacion('exito', 'Sesión iniciada', `Bienvenido(a), ${datos.usuario?.nombre || nombre}.`);
+          return;
+        }
+      }
+    } catch (_) {}
+
     manejarIngreso(
       {
         nombre,
@@ -177,7 +361,86 @@ function App() {
       },
       user.id
     );
-  };
+    mostrarNotificacion('exito', 'Sesión iniciada', `Bienvenido(a), ${nombre}.`);
+  }, [manejarIngreso, mostrarNotificacion]);
+
+  useEffect(() => {
+    const procesarUrlOAuth = async (url) => {
+      if (!url || typeof url !== 'string') return;
+      try {
+        if (url.includes('#')) {
+          const urlHash = url.split('#')[1];
+          const params = new URLSearchParams(urlHash);
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+          if (accessToken && refreshToken) {
+            const { data } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            });
+            if (data?.session?.user) {
+              await cargarUsuarioOAuth(data.session.user);
+            }
+            return;
+          }
+        }
+        if (url.includes('code=')) {
+          const queryPart = url.split('?')[1]?.split('#')[0] || '';
+          const params = new URLSearchParams(queryPart);
+          const code = params.get('code');
+          if (code && supabase.auth.exchangeCodeForSession) {
+            const { data } = await supabase.auth.exchangeCodeForSession(code);
+            if (data?.session?.user) {
+              await cargarUsuarioOAuth(data.session.user);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error procesando callback OAuth:', err);
+      }
+    };
+
+    window.recibirCallbackOAuth = procesarUrlOAuth;
+    const listenerCustom = (e) => {
+      if (e?.detail?.url) procesarUrlOAuth(e.detail.url);
+    };
+    window.addEventListener('campyOAuthCallback', listenerCustom);
+
+    try {
+      const urlPendiente = window.CampyNative?.obtenerUrlCallbackPendiente?.();
+      if (urlPendiente) {
+        procesarUrlOAuth(urlPendiente);
+      } else if (window.location.hash?.includes('access_token=') || window.location.search?.includes('code=')) {
+        procesarUrlOAuth(window.location.href);
+      }
+    } catch (_) {}
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const sesionActiva = localStorage.getItem('campy_sesion_activa_v3') === 'true';
+      const oauthPendiente = localStorage.getItem('campy_oauth_pendiente') === '1';
+      if (session?.user && (sesionActiva || oauthPendiente)) {
+        cargarUsuarioOAuth(session.user);
+      }
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const sesionActiva = localStorage.getItem('campy_sesion_activa_v3') === 'true';
+        const oauthPendiente = localStorage.getItem('campy_oauth_pendiente') === '1';
+        if (sesionActiva || oauthPendiente) {
+          cargarUsuarioOAuth(session.user);
+        }
+      } else if (event === 'SIGNED_OUT' && !localStorage.getItem('campy_token')) {
+        setPantallaActual('login');
+      }
+    });
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener('campyOAuthCallback', listenerCustom);
+      if (window.recibirCallbackOAuth === procesarUrlOAuth) {
+        delete window.recibirCallbackOAuth;
+      }
+    };
+  }, [cargarUsuarioOAuth]);
 
   useEffect(() => {
     let vigente = true;
@@ -192,14 +455,52 @@ function App() {
         if (!Array.isArray(datos)) throw new Error('La respuesta del catálogo no es válida.');
 
         if (vigente) {
-          setProductosCatalogo(datos.map((producto) => ({
+          const mapeados = datos.map((producto) => ({
             ...producto,
             id: producto.id_producto,
             precio: Number(producto.precio),
             categoria: producto.categoria || 'Sin categoría',
             tienda: producto.nombre_vendedor ? `Vende: ${producto.nombre_vendedor}` : 'Vendedor no disponible',
             ubicacion: 'Por acordar con el vendedor',
-          })));
+          }));
+
+          if (tokenAuth) {
+            const nuevosIds = new Set(mapeados.map((p) => String(p.id)));
+            if (productosCatalogoIdsRef.current !== null && usuarioActual.esModerador) {
+              mapeados.forEach((p) => {
+                if (!productosCatalogoIdsRef.current.has(String(p.id))) {
+                  mostrarNotificacion(
+                    'info',
+                    'Nuevo producto en catálogo',
+                    `Se publicó "${p.nombre}" (${p.tienda}) por $${p.precio}.`
+                  );
+                }
+              });
+            }
+            productosCatalogoIdsRef.current = nuevosIds;
+
+            if (usuarioActual.esVendedor && usuarioActual.id_usuario) {
+              const misProdsActuales = new Map(
+                mapeados
+                  .filter((p) => Number(p.id_vendedor) === Number(usuarioActual.id_usuario))
+                  .map((p) => [String(p.id), p.nombre])
+              );
+              if (misProductosIdsRef.current !== null) {
+                misProductosIdsRef.current.forEach((nombreProd, idProd) => {
+                  if (!misProdsActuales.has(idProd)) {
+                    mostrarNotificacion(
+                      'aviso',
+                      'Cambio en tus productos',
+                      `Tu publicación "${nombreProd}" ya no se encuentra activa en el catálogo.`
+                    );
+                  }
+                });
+              }
+              misProductosIdsRef.current = misProdsActuales;
+            }
+          }
+
+          setProductosCatalogo(mapeados);
         }
       } catch (error) {
         if (vigente) {
@@ -213,41 +514,36 @@ function App() {
 
     obtenerCatalogo();
     return () => { vigente = false; };
-  }, [recargaCatalogo]);
+  }, [recargaCatalogo, tokenAuth, usuarioActual.esModerador, usuarioActual.esVendedor, usuarioActual.id_usuario, mostrarNotificacion]);
 
-  const manejarIngreso = (datosUsuario, token = null) => {
-    if (token) {
-      localStorage.setItem('campy_token', token);
-      setTokenAuth(token);
-    }
-    if (datosUsuario) {
-      setUsuarioActual({
-        nombre: datosUsuario.nombre || '',
-        correo: datosUsuario.correo || '',
-        carrera: datosUsuario.carrera || '',
-        id_usuario: datosUsuario.id_usuario,
-        esVendedor: datosUsuario.esVendedor === true,
-        datosVendedor: null,
-        esRepartidor: datosUsuario.esRepartidor === true,
-        esModerador: datosUsuario.esModerador === true,
-        datosRepartidor: null
-      });
-    }
+  const cerrarSesionUsuario = useCallback(() => {
+    localStorage.removeItem('campy_sesion_activa_v3');
+    localStorage.removeItem('campy_oauth_pendiente');
+    localStorage.removeItem('campy_token');
+    localStorage.removeItem('campy_usuario');
+    localStorage.removeItem('campy_pantalla');
+    supabase.auth.signOut().catch(() => {});
+    estadosPedidosClienteRef.current = null;
+    estadosPedidosVendedorRef.current = null;
+    repartosDisponiblesIdsRef.current = null;
+    estadoSolicitudVendedorRef.current = undefined;
+    rolVendedorRef.current = undefined;
+    rolRepartidorRef.current = undefined;
+    solicitudesModeradorRef.current = null;
+    productosCatalogoIdsRef.current = null;
+    misProductosIdsRef.current = null;
+    setTokenAuth(null);
+    setUsuarioActual(USUARIO_VACIO);
     setSolicitudVendedor(null);
-    setPantallaActual(
-      datosUsuario?.esModerador === true
-        ? 'moderador'
-        : datosUsuario?.esVendedor === true
-          ? 'vendedor'
-          : datosUsuario?.esRepartidor === true
-            ? 'repartidor'
-            : 'home'
-    );
-    setRecargaCatalogo((n) => n + 1);
-  };
+    setPedidosPorCumplir([]);
+    setPedidosParaVendedor([]);
+    setPedidosRepartidor([]);
+    setCarritoGlobal({});
+    setPantallaActual('login');
+  }, []);
 
   useEffect(() => {
-    if (!tokenAuth || !['pedidos', 'vendedor'].includes(pantallaActual)) {
+    if (!tokenAuth) {
       consultaPedidosRef.current = null;
       return;
     }
@@ -256,8 +552,6 @@ function App() {
     let consultando = false;
     let consultaPendiente = false;
     let primeraConsulta = true;
-    const esVendedor = pantallaActual === 'vendedor';
-    const ruta = esVendedor ? '/api/pedidos/vendedor' : '/api/pedidos';
 
     const consultar = async (manual = false) => {
       if (!vigente) return;
@@ -265,31 +559,113 @@ function App() {
         if (manual) consultaPendiente = true;
         return;
       }
-      if (!manual && document.visibilityState === 'hidden') return;
 
       consultando = true;
-      if (primeraConsulta) setCargandoPedidos(true);
-      else if (manual) setActualizandoPedidos(true);
+      if (primeraConsulta && ['pedidos', 'vendedor'].includes(pantallaActual)) {
+        setCargandoPedidos(true);
+      } else if (manual) {
+        setActualizandoPedidos(true);
+      }
 
       try {
-        const respuesta = await fetch(`${API_URL}${ruta}`, {
+        // 1. Pedidos como cliente
+        const respCliente = await fetch(`${API_URL}/api/pedidos`, {
           headers: { Authorization: `Bearer ${tokenAuth}` },
           cache: 'no-store'
         });
-        const datos = await respuesta.json().catch(() => ({}));
-        if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudieron consultar los pedidos.');
-        if (!Array.isArray(datos)) throw new Error('La respuesta de pedidos no es válida.');
-
-        if (vigente) {
-          if (esVendedor) {
-            setPedidosParaVendedor(datos);
-          } else {
-            setPedidosPorCumplir(datos);
+        const datosCliente = await respCliente.json().catch(() => ({}));
+        if (respCliente.ok && Array.isArray(datosCliente) && vigente) {
+          if (estadosPedidosClienteRef.current !== null) {
+            datosCliente.forEach((pedido) => {
+              const idStr = String(pedido.id);
+              const estadoPrevio = estadosPedidosClienteRef.current.get(idStr);
+              if (estadoPrevio && estadoPrevio !== pedido.estado) {
+                let detalle = `Tu pedido #${pedido.id} cambió a estado: ${pedido.estado}.`;
+                if (pedido.estado === 'En preparación') {
+                  detalle = `El vendedor aceptó tu pedido #${pedido.id} y ya lo está preparando.`;
+                } else if (pedido.estado === 'En camino') {
+                  detalle = `¡Tu pedido #${pedido.id} va en camino hacia ${pedido.puntoEntrega || 'tu punto de entrega'}!`;
+                } else if (pedido.estado === 'En el punto de entrega') {
+                  detalle = `¡Tu pedido #${pedido.id} ya llegó a ${pedido.puntoEntrega || 'el punto de entrega'}!`;
+                } else if (pedido.estado === 'Entregado') {
+                  detalle = `Tu pedido #${pedido.id} fue marcado como entregado. ¡Gracias por tu compra!`;
+                } else if (pedido.estado === 'Cancelado') {
+                  detalle = `Tu pedido #${pedido.id} fue cancelado.`;
+                }
+                mostrarNotificacion('info', `Pedido #${pedido.id}: ${pedido.estado}`, detalle);
+              }
+            });
           }
-          setErrorPedidos('');
+          estadosPedidosClienteRef.current = new Map(
+            datosCliente.map((p) => [String(p.id), p.estado])
+          );
+          setPedidosPorCumplir(datosCliente);
+          if (pantallaActual === 'pedidos') setErrorPedidos('');
+        } else if (!respCliente.ok && pantallaActual === 'pedidos' && vigente) {
+          setErrorPedidos(datosCliente.mensaje || 'No se pudieron consultar los pedidos.');
+        }
+
+        // 2. Pedidos como vendedor
+        if (usuarioActual.esVendedor) {
+          const respVendedor = await fetch(`${API_URL}/api/pedidos/vendedor`, {
+            headers: { Authorization: `Bearer ${tokenAuth}` },
+            cache: 'no-store'
+          });
+          const datosVendedor = await respVendedor.json().catch(() => ({}));
+          if (respVendedor.ok && Array.isArray(datosVendedor) && vigente) {
+            if (estadosPedidosVendedorRef.current !== null) {
+              datosVendedor.forEach((pedido) => {
+                const idStr = String(pedido.id);
+                const claveEstadoActual = `${pedido.estado || ''}|${pedido.estadoReparto || ''}|${pedido.repartidorAsignado || ''}`;
+                if (!estadosPedidosVendedorRef.current.has(idStr)) {
+                  mostrarNotificacion(
+                    'exito',
+                    `¡Nueva venta recibida! (Pedido #${pedido.id})`,
+                    `${pedido.compradorNombre || 'Un comprador'} realizó un pedido por $${pedido.total} en ${pedido.puntoEntrega || 'el campus'}.`
+                  );
+                } else {
+                  const clavePrevia = estadosPedidosVendedorRef.current.get(idStr);
+                  if (clavePrevia && clavePrevia !== claveEstadoActual) {
+                    const [estadoAnt, repartoAnt, asigAnt] = clavePrevia.split('|');
+                    if (!asigAnt && pedido.repartidorAsignado) {
+                      mostrarNotificacion(
+                        'info',
+                        `Repartidor asignado (Pedido #${pedido.id})`,
+                        `${pedido.repartidorAsignado} aceptó llevar tu pedido.`
+                      );
+                    } else if (repartoAnt !== (pedido.estadoReparto || '') && pedido.estadoReparto) {
+                      mostrarNotificacion(
+                        'info',
+                        `Reparto #${pedido.id}: ${pedido.estadoReparto}`,
+                        `El estado de reparto del pedido #${pedido.id} cambió a: ${pedido.estadoReparto}.`
+                      );
+                    } else if (estadoAnt !== (pedido.estado || '')) {
+                      mostrarNotificacion(
+                        'info',
+                        `Venta #${pedido.id} actualizada`,
+                        `El pedido de ${pedido.compradorNombre || 'tu cliente'} cambió a: ${pedido.estado}.`
+                      );
+                    }
+                  }
+                }
+              });
+            }
+            estadosPedidosVendedorRef.current = new Map(
+              datosVendedor.map((p) => [
+                String(p.id),
+                `${p.estado || ''}|${p.estadoReparto || ''}|${p.repartidorAsignado || ''}`
+              ])
+            );
+            setPedidosParaVendedor(datosVendedor);
+            if (pantallaActual === 'vendedor') setErrorPedidos('');
+          } else if (!respVendedor.ok && pantallaActual === 'vendedor' && vigente) {
+            setErrorPedidos(datosVendedor.mensaje || 'No se pudieron consultar los pedidos.');
+          }
         }
       } catch (error) {
-        if (vigente) setErrorPedidos(error.message || 'No se pudieron consultar los pedidos.');
+        if (vigente && ['pedidos', 'vendedor'].includes(pantallaActual)) {
+          setErrorPedidos(error.message || 'No se pudieron consultar los pedidos.');
+        }
       } finally {
         if (vigente) {
           setCargandoPedidos(false);
@@ -322,15 +698,15 @@ function App() {
       document.removeEventListener('visibilitychange', alVolver);
       window.removeEventListener('focus', alEnfocar);
     };
-  }, [pantallaActual, tokenAuth]);
+  }, [pantallaActual, tokenAuth, usuarioActual.esVendedor, mostrarNotificacion]);
 
 
   useEffect(() => {
-    if (pantallaActual !== 'repartidor' || !tokenAuth) return;
+    if (!tokenAuth || (!usuarioActual.esRepartidor && pantallaActual !== 'repartidor')) return;
     let activo = true;
     let consultando = false;
     const consultar = async () => {
-      if (!activo || consultando || document.visibilityState === 'hidden') return;
+      if (!activo || consultando) return;
       consultando = true;
       try {
         const respuesta = await fetch(`${API_URL}/api/repartos`, {
@@ -341,6 +717,22 @@ function App() {
         if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudieron consultar los repartos.');
         if (!Array.isArray(datos)) throw new Error('Respuesta de repartos inválida.');
         if (activo) {
+          const disponibles = datos.filter(
+            (p) => p.requiereRepartidor && !p.repartidorAsignado && p.estado !== 'Cancelado' && p.estado !== 'Entregado'
+          );
+          if (repartosDisponiblesIdsRef.current !== null) {
+            disponibles.forEach((ped) => {
+              const idStr = String(ped.id);
+              if (!repartosDisponiblesIdsRef.current.has(idStr)) {
+                mostrarNotificacion(
+                  'info',
+                  `¡Nuevo pedido para repartir! (#${ped.id})`,
+                  `Recoger en ${ped.lugarRecoleccion || 'campus'} y entregar en ${ped.puntoEntrega || 'campus'}.`
+                );
+              }
+            });
+          }
+          repartosDisponiblesIdsRef.current = new Set(disponibles.map((p) => String(p.id)));
           setPedidosRepartidor(datos);
           setErrorRepartos('');
         }
@@ -361,7 +753,7 @@ function App() {
       document.removeEventListener('visibilitychange', alVolver);
       window.removeEventListener('focus', consultar);
     };
-  }, [pantallaActual, tokenAuth]);
+  }, [pantallaActual, tokenAuth, usuarioActual.esRepartidor, mostrarNotificacion]);
 
   const solicitarRepartoAPI = async (ruta, metodo = 'GET', cuerpo = null) => {
     const token = localStorage.getItem('campy_token') || tokenAuth;
@@ -412,6 +804,7 @@ function App() {
 
     setCarritoGlobal({});
     setPantallaActual('pedidos');
+    refrescarPedidos();
     return resultado;
   };
 
@@ -426,34 +819,108 @@ function App() {
     });
     const datos = await respuesta.json().catch(() => ({}));
     if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo enviar la solicitud.');
+    estadoSolicitudVendedorRef.current = datos.solicitud?.estado || 'Pendiente';
     setSolicitudVendedor(datos.solicitud);
     return datos;
   };
 
   useEffect(() => {
-    if (pantallaActual !== 'perfil' || !tokenAuth) return;
+    if (!tokenAuth) return;
     let vigente = true;
     const consultar = async () => {
       try {
         const respuesta = await fetch(`${API_URL}/api/solicitudes-vendedor/mia`, {
-          headers: { Authorization: `Bearer ${tokenAuth}` }
+          headers: { Authorization: `Bearer ${tokenAuth}` },
+          cache: 'no-store'
         });
-        if (!respuesta.ok) return;
-        const datos = await respuesta.json();
-        if (!vigente) return;
-        setSolicitudVendedor(datos.solicitud);
-        setUsuarioActual((prev) => ({
-          ...prev,
-          esVendedor: datos.esVendedor === true,
-          esRepartidor: datos.esRepartidor === true,
-          esModerador: datos.esModerador === true
-        }));
+        if (respuesta.ok) {
+          const datos = await respuesta.json();
+          if (!vigente) return;
+
+          const nuevoEstadoSol = datos.solicitud?.estado || null;
+          if (
+            estadoSolicitudVendedorRef.current !== undefined &&
+            estadoSolicitudVendedorRef.current !== nuevoEstadoSol &&
+            nuevoEstadoSol
+          ) {
+            if (nuevoEstadoSol === 'Aprobada') {
+              mostrarNotificacion(
+                'exito',
+                '¡Solicitud de Vendedor Aprobada!',
+                'Tu cuenta de vendedor en Campy fue aprobada. Ya puedes publicar tus productos.'
+              );
+            } else if (nuevoEstadoSol === 'Rechazada') {
+              mostrarNotificacion(
+                'aviso',
+                'Solicitud de Vendedor Revisada',
+                `Tu solicitud para vender no fue aprobada.${datos.solicitud?.comentario_revision ? ' Motivo: ' + datos.solicitud.comentario_revision : ''}`
+              );
+            }
+          }
+          estadoSolicitudVendedorRef.current = nuevoEstadoSol;
+
+          if (rolVendedorRef.current === true && datos.esVendedor === false) {
+            mostrarNotificacion(
+              'aviso',
+              'Cambio en tu cuenta de vendedor',
+              'Tu rol de vendedor fue desactivado por un moderador.'
+            );
+          }
+          if (rolRepartidorRef.current === false && datos.esRepartidor === true) {
+            mostrarNotificacion(
+              'exito',
+              '¡Solicitud de Repartidor Aprobada!',
+              'Tu cuenta de repartidor en Campy fue activada.'
+            );
+          }
+          rolVendedorRef.current = datos.esVendedor === true;
+          rolRepartidorRef.current = datos.esRepartidor === true;
+
+          setSolicitudVendedor(datos.solicitud);
+          setUsuarioActual((prev) => ({
+            ...prev,
+            esVendedor: datos.esVendedor === true,
+            esRepartidor: datos.esRepartidor === true,
+            esModerador: datos.esModerador === true
+          }));
+
+          if (datos.esModerador === true) {
+            const respPend = await fetch(`${API_URL}/api/solicitudes-vendedor/pendientes`, {
+              headers: { Authorization: `Bearer ${tokenAuth}` },
+              cache: 'no-store'
+            });
+            if (respPend.ok) {
+              const pendientes = await respPend.json().catch(() => []);
+              if (Array.isArray(pendientes) && vigente) {
+                if (solicitudesModeradorRef.current !== null) {
+                  pendientes.forEach((sol) => {
+                    const idSol = String(sol.id_solicitud);
+                    if (!solicitudesModeradorRef.current.has(idSol)) {
+                      mostrarNotificacion(
+                        'info',
+                        'Nueva solicitud de vendedor',
+                        `${sol.nombre_tienda || sol.nombre_usuario || 'Un estudiante'} envió una solicitud para vender en Campy.`
+                      );
+                    }
+                  });
+                }
+                solicitudesModeradorRef.current = new Set(
+                  pendientes.map((s) => String(s.id_solicitud))
+                );
+              }
+            }
+          }
+        }
       } catch (_) { }
+
+      if (vigente) {
+        setRecargaCatalogo((n) => n + 1);
+      }
     };
     consultar();
-    const intervalo = setInterval(consultar, 15000);
+    const intervalo = setInterval(consultar, 12000);
     return () => { vigente = false; clearInterval(intervalo); };
-  }, [pantallaActual, tokenAuth]);
+  }, [tokenAuth, mostrarNotificacion]);
 
   const registrarComoRepartidor = async (datosRepartidor) => {
     if (!tokenAuth) throw new Error('Inicia sesión para solicitar el rol.');
@@ -477,6 +944,13 @@ function App() {
     });
     const resultado = await respuesta.json().catch(() => ({}));
     if (!respuesta.ok) throw new Error(resultado.mensaje || 'No se pudo guardar el producto.');
+    if (metodo === 'POST') {
+      const idCreado = resultado?.producto?.id_producto || resultado?.id_producto;
+      if (idCreado) {
+        if (misProductosIdsRef.current) misProductosIdsRef.current.set(String(idCreado), datos.nombre);
+        if (productosCatalogoIdsRef.current) productosCatalogoIdsRef.current.add(String(idCreado));
+      }
+    }
     setRecargaCatalogo(n => n + 1);
     return resultado;
   };
@@ -501,6 +975,9 @@ function App() {
   const eliminarProducto = async (idProducto) => {
     const token = localStorage.getItem('campy_token') || tokenAuth;
     if (!token) throw new Error('Tu sesión ha expirado. Inicia sesión nuevamente.');
+    if (misProductosIdsRef.current) {
+      misProductosIdsRef.current.delete(String(idProducto));
+    }
     const respuesta = await fetch(`${API_URL}/api/productos/${idProducto}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
@@ -533,6 +1010,10 @@ function App() {
   // Primero confirmar en Supabase; actualizar la pantalla solo si la BD respondió correctamente.
   const configurarAceptacionPedido = async (pedidoId, config) => {
     const datos = await solicitarRepartoAPI(`/pedido/${pedidoId}/aceptar`, 'POST', config);
+    if (estadosPedidosVendedorRef.current) {
+      const clave = `${datos.pedido.estado || ''}|${datos.estadoReparto || ''}|`;
+      estadosPedidosVendedorRef.current.set(String(pedidoId), clave);
+    }
     setPedidosParaVendedor((prev) => prev.map((p) =>
       p.id === pedidoId
         ? { ...p, ...config, estado: datos.pedido.estado,
@@ -549,6 +1030,12 @@ function App() {
     if (pedidoLocal?.requiereRepartidor && ['Listo', 'Repartidor llegó'].includes(nuevoEstado)) {
       const accion = nuevoEstado === 'Listo' ? 'listo' : 'repartidor_llego';
       const resultado = await solicitarRepartoAPI(`/${pedidoId}/avanzar`, 'PATCH', { accion });
+      if (estadosPedidosVendedorRef.current) {
+        estadosPedidosVendedorRef.current.set(
+          String(pedidoId),
+          `${pedidoLocal.estado || ''}|${resultado.pedido.estadoReparto || ''}|${pedidoLocal.repartidorAsignado || ''}`
+        );
+      }
       setPedidosParaVendedor(prev => prev.map(p => String(p.id) === String(pedidoId)
         ? { ...p, estadoReparto: resultado.pedido.estadoReparto }
         : p
@@ -557,6 +1044,12 @@ function App() {
       return resultado.pedido;
     }
     const pedidoGuardado = await guardarEstadoEnSupabase(pedidoId, nuevoEstado);
+    if (estadosPedidosVendedorRef.current) {
+      estadosPedidosVendedorRef.current.set(
+        String(pedidoId),
+        `${pedidoGuardado.estado || ''}|${pedidoLocal?.estadoReparto || ''}|${pedidoLocal?.repartidorAsignado || ''}`
+      );
+    }
     setPedidosParaVendedor((prev) =>
       prev.map((p) => p.id === pedidoId
         ? { ...p, estado: pedidoGuardado.estado, notaCancelacion: notaCancelacion || p.notaCancelacion }
@@ -598,6 +1091,9 @@ function App() {
     });
     const datos = await respuesta.json().catch(() => ({}));
     if (!respuesta.ok) throw new Error(datos.mensaje || 'No se pudo confirmar la recepción del pedido.');
+    if (estadosPedidosClienteRef.current) {
+      estadosPedidosClienteRef.current.set(String(pedidoId), datos.pedido.estado);
+    }
     setPedidosPorCumplir((prev) =>
       prev.map((p) => p.id === pedidoId ? { ...p, estado: datos.pedido.estado } : p)
     );
@@ -701,15 +1197,7 @@ function App() {
           irAPanelRepartidor={() => setPantallaActual('repartidor')}
           irAInicio={() => setPantallaActual('home')}
           irAPedidos={() => setPantallaActual('pedidos')}
-          cerrarSesion={() => {
-            localStorage.removeItem('campy_token');
-            setTokenAuth(null);
-            setSolicitudVendedor(null);
-            setPedidosPorCumplir([]);
-            setPedidosParaVendedor([]);
-            setCarritoGlobal({});
-            setPantallaActual('login');
-          }}
+          cerrarSesion={cerrarSesionUsuario}
         />
       )}
 
@@ -725,15 +1213,7 @@ function App() {
           irAPerfil={() => setPantallaActual('perfil')}
           irAPanelVendedor={() => setPantallaActual('vendedor')}
           irAInicio={() => setPantallaActual('home')}
-          cerrarSesion={() => {
-            localStorage.removeItem('campy_token');
-            setTokenAuth(null);
-            setSolicitudVendedor(null);
-            setCarritoGlobal({});
-            setPedidosPorCumplir([]);
-            setPedidosParaVendedor([]);
-            setPantallaActual('login');
-          }}
+          cerrarSesion={cerrarSesionUsuario}
         />
       )}
 
@@ -759,15 +1239,7 @@ function App() {
           cambiarEstadoPedidoVendedor={conNotificacion(cambiarEstadoPedidoVendedor, 'Estado del pedido actualizado', 'El cambio se guardó correctamente y ya puedes consultar el estado del pedido.')}
           liberarReparto={conNotificacion(liberarReparto, 'Reparto actualizado', 'Se registró el cambio en el reparto.')}
           volverAModoCliente={() => setPantallaActual('home')}
-          cerrarSesion={() => {
-            localStorage.removeItem('campy_token');
-            setTokenAuth(null);
-            setSolicitudVendedor(null);
-            setPedidosPorCumplir([]);
-            setPedidosParaVendedor([]);
-            setCarritoGlobal({});
-            setPantallaActual('login');
-          }}
+          cerrarSesion={cerrarSesionUsuario}
         />
       )}
 
@@ -781,15 +1253,7 @@ function App() {
           tomarPedidoRepartidor={conNotificacion(tomarPedidoRepartidor, 'Pedido asignado', 'Has aceptado el reparto correctamente.')}
           cambiarEstadoPedido={conNotificacion(cambiarEstadoPedido, 'Reparto actualizado', 'El avance de la entrega se registró correctamente.')}
           volverAModoCliente={() => setPantallaActual('home')}
-          cerrarSesion={() => {
-            localStorage.removeItem('campy_token');
-            setTokenAuth(null);
-            setSolicitudVendedor(null);
-            setPedidosPorCumplir([]);
-            setPedidosParaVendedor([]);
-            setCarritoGlobal({});
-            setPantallaActual('login');
-          }}
+          cerrarSesion={cerrarSesionUsuario}
         />
       )}
     </>
